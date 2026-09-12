@@ -1,0 +1,18 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Node
+node_modules/
+dist/
+
+# OS
+.DS_Store
+
+# Data (future modules)
+data/documents/*
+data/processed/*
+!data/documents/.gitkeep
+!data/processed/.gitkeep
