@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     LLM_MAX_RETRIES: int = 2
     LLM_TEMPERATURE: float = 0.2
 
+        # Web Search
+    TAVILY_API_KEY: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -30,3 +33,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
