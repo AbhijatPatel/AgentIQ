@@ -11,8 +11,8 @@ dist/
 # OS
 .DS_Store
 
-# Data (future modules)
-data/documents/*
-data/processed/*
-!data/documents/.gitkeep
-!data/processed/.gitkeep
+# Data (any depth - covers both root-level and backend-level paths)
+**/data/documents/*
+**/data/processed/*
+!**/data/documents/.gitkeep
+!**/data/processed/.gitkeep
