@@ -163,15 +163,20 @@ def writer_user_prompt(user_goal: str, tasks: list, evidence: list) -> str:
         f"{e.get('claim', '')} (source: {e.get('source_title', 'unknown')})"
         for e in evidence
     )
+    
 
     return f"""User goal:
 "{user_goal}"
+
+
 
 Research tasks that were investigated:
 {tasks_text}
 
 Collected evidence:
 {evidence_text if evidence_text else "(no evidence was collected)"}
+
+
 
 Write the full research report following your instructions and output format."""
 
@@ -241,3 +246,49 @@ Draft report to evaluate:
 {draft_report}
 
 Evaluate this draft following your instructions and output format."""
+
+def writer_revision_prompt(
+    user_goal: str,
+    tasks: list,
+    evidence: list,
+    previous_draft: dict,
+    critique_issues: list,
+    critique_suggestions: list,
+) -> str:
+    """
+    Build the user-turn prompt for a Writer REVISION pass.
+
+    Unlike the first draft, this gives the Writer its own previous
+    output plus the Critic's specific feedback, so it can make
+    targeted fixes instead of starting over blindly.
+    """
+    tasks_text = "\n".join(f"- {t['description']}" for t in tasks)
+    evidence_text = "\n".join(
+        f"- [{e.get('type', 'evidence')}, confidence={e.get('confidence', 'unknown')}] "
+        f"{e.get('claim', '')} (source: {e.get('source_title', 'unknown')})"
+        for e in evidence
+    )
+    issues_text = "\n".join(f"- {issue}" for issue in critique_issues) or "(none listed)"
+    suggestions_text = "\n".join(f"- {s}" for s in critique_suggestions) or "(none listed)"
+
+    return f"""User goal:
+"{user_goal}"
+
+Research tasks that were investigated:
+{tasks_text}
+
+Collected evidence:
+{evidence_text if evidence_text else "(no evidence was collected)"}
+
+Your PREVIOUS draft report:
+{previous_draft}
+
+The Critic identified these issues with your previous draft:
+{issues_text}
+
+The Critic suggested these fixes:
+{suggestions_text}
+
+Revise the report to address every issue and suggestion above, while still \
+following your original instructions and output format. Do not introduce new \
+fabricated content while fixing these issues."""
