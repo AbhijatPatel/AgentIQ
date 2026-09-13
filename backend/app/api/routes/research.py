@@ -8,6 +8,12 @@ GET  /api/research/{id}/events   -> see agent progress events so far
 
 from __future__ import annotations
 
+import asyncio
+import json
+
+from fastapi.responses import StreamingResponse
+
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from app.api.dependencies import create_session, get_session, update_session
@@ -86,4 +92,56 @@ def get_research_events(research_id: str):
 
     return ResearchEventsResponse(
         research_id=research_id, events=session.get("agent_events", [])
+    )
+async def _event_stream(research_id: str):
+    """
+    Async generator that yields new AgentEvents as Server-Sent Events.
+
+    Polls the session's agent_events list every 500ms and streams only
+    events that haven't been sent yet. Stops when the session reaches
+    a terminal status (completed/failed) and all events have been sent.
+    """
+    sent_count = 0
+
+    while True:
+        session = get_session(research_id)
+        if session is None:
+            yield f"data: {json.dumps({'event': 'error', 'message': 'Session not found'})}\n\n"
+            return
+
+        events = session.get("agent_events", [])
+
+        # Stream any events we haven't sent yet
+        while sent_count < len(events):
+            event = events[sent_count]
+            payload = event.model_dump() if hasattr(event, "model_dump") else event
+            yield f"data: {json.dumps(payload, default=str)}\n\n"
+            sent_count += 1
+
+        status = session.get("status")
+        if status in ("completed", "failed") and sent_count >= len(events):
+            yield f"data: {json.dumps({'event': 'done', 'status': status})}\n\n"
+            return
+
+        await asyncio.sleep(0.5)
+
+
+@router.get("/research/{research_id}/stream")
+async def stream_research_events(research_id: str):
+    """
+    Stream agent events live via Server-Sent Events (SSE) as the
+    research pipeline runs, instead of requiring the frontend to poll.
+    """
+    session = get_session(research_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Research session not found")
+
+    return StreamingResponse(
+        _event_stream(research_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # disables proxy buffering, keeps stream live
+        },
     )
