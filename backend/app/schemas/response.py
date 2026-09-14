@@ -12,7 +12,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from app.graph.state import AgentEvent, Critique, DraftReport, Task
+from app.graph.state import AgentEvent, Critique, DraftReport, Evidence, Task
 
 
 class ResearchStartedResponse(BaseModel):
@@ -27,6 +27,7 @@ class ResearchStatusResponse(BaseModel):
     status: str  # "running" | "completed" | "failed"
     user_goal: str
     tasks: list[Task] = []
+    evidence: list[Evidence] = []
     evidence_count: int = 0
     revision_count: int = 0
     final_report: Optional[DraftReport] = None

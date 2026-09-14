@@ -44,6 +44,7 @@ def _run_research_pipeline(research_id: str, user_goal: str) -> None:
             research_id,
             status="completed",
             tasks=final_state.get("tasks", []),
+            evidence=final_state.get("evidence", []),
             evidence_count=len(final_state.get("evidence", [])),
             revision_count=final_state.get("revision_count", 0),
             final_report=final_state.get("final_report"),

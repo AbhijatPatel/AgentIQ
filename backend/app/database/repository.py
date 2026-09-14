@@ -29,6 +29,7 @@ def _model_to_dict(model: ResearchSessionModel) -> dict:
         "status": model.status,
         "user_goal": model.user_goal,
         "tasks": model.tasks or [],
+        "evidence": model.evidence or [],
         "evidence_count": model.evidence_count,
         "revision_count": model.revision_count,
         "final_report": model.final_report,
@@ -76,6 +77,8 @@ def update_session(research_id: str, db: Optional[Session] = None, **updates) ->
         for key, value in updates.items():
             if key == "tasks" and value:
                 value = [t.model_dump() if hasattr(t, "model_dump") else t for t in value]
+            if key == "evidence" and value:
+                value = [e.model_dump() if hasattr(e, "model_dump") else e for e in value]
             if key == "final_report" and value and hasattr(value, "model_dump"):
                 value = value.model_dump()
             if key == "critique" and value and hasattr(value, "model_dump"):
