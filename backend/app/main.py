@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import documents, health, research
 from app.config.settings import settings
+from app.database.connection import init_db
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -20,6 +21,7 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"{settings.APP_NAME} starting in {settings.ENVIRONMENT} mode")
+    init_db()
     yield
     logger.info(f"{settings.APP_NAME} shutting down")
 
