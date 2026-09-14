@@ -182,3 +182,40 @@
     border-right-color: var(--border);
   }
 }
+.markdown-content {
+  line-height: 1.6;
+  color: #374151;
+}
+
+.markdown-content p {
+  margin: 0 0 0.75rem 0;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.markdown-content th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  padding-left: 1.25rem;
+  margin: 0 0 0.75rem 0;
+}
+
+.markdown-content li {
+  margin-bottom: 0.35rem;
+}
