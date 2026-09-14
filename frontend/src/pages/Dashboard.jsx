@@ -3,6 +3,7 @@ import { useResearch } from "../hooks/useResearch";
 import AgentStatus from "../components/AgentStatus";
 import ResearchSteps from "../components/ResearchSteps";
 import ReportViewer from "../components/ReportViewer";
+import SourceViewer from "../components/SourceViewer";
 
 const MIN_GOAL_LENGTH = 5;
 
@@ -129,6 +130,7 @@ export default function Dashboard() {
       {result?.final_report && (
         <ReportViewer report={result.final_report} critique={result.critique} />
       )}
+            {result?.evidence && <SourceViewer evidence={result.evidence} />}
     </div>
   );
 }
