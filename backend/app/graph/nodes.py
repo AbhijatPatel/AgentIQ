@@ -18,6 +18,7 @@ from app.agents.planner import run_planner, PlannerError
 from app.agents.researcher import run_researcher, ResearcherError
 from app.graph.events import append_event
 from app.graph.state import AgentState
+from app.utils.observability import timed_stage
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -32,20 +33,21 @@ def planner_node(state: AgentState) -> dict:
     events = state.get("agent_events", [])
     events = append_event(events, "planner", "started", "Planning research tasks...")
 
-    try:
-        tasks = run_planner(state["user_goal"])
-        events = append_event(
-            events, "planner", "completed", f"Produced {len(tasks)} tasks", status="success"
-        )
-        return {"tasks": tasks, "agent_events": events}
-    except PlannerError as exc:
-        logger.error(f"[Graph] planner_node failed: {exc}")
-        events = append_event(events, "planner", "failed", str(exc), status="error")
-        return {
-            "tasks": [],
-            "agent_events": events,
-            "errors": state.get("errors", []) + [f"Planner failed: {exc}"],
-        }
+    with timed_stage("planner"):
+        try:
+            tasks = run_planner(state["user_goal"])
+            events = append_event(
+                events, "planner", "completed", f"Produced {len(tasks)} tasks", status="success"
+            )
+            return {"tasks": tasks, "agent_events": events}
+        except PlannerError as exc:
+            logger.error(f"[Graph] planner_node failed: {exc}")
+            events = append_event(events, "planner", "failed", str(exc), status="error")
+            return {
+                "tasks": [],
+                "agent_events": events,
+                "errors": state.get("errors", []) + [f"Planner failed: {exc}"],
+            }
 
 
 def researcher_node(state: AgentState) -> dict:
