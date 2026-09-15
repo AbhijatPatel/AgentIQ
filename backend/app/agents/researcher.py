@@ -16,6 +16,7 @@ from app.llm.client import llm_client, LLMClientError
 from app.llm.prompts import RESEARCHER_SYSTEM_PROMPT, researcher_user_prompt
 from app.rag.retriever import retrieve
 from app.tools.web_search import web_search, WebSearchError
+from app.utils.validators import sanitize_retrieved_content
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -38,17 +39,21 @@ def _format_raw_material(rag_results: list[dict], web_results: list[dict]) -> st
     if rag_results:
         sections.append("=== INTERNAL DOCUMENTS (RAG) ===")
         for i, r in enumerate(rag_results, start=1):
-            sections.append(
-                f"[Doc {i}] Source: {r.get('filename', 'unknown')}\n{r.get('content', '')}"
+            content = sanitize_retrieved_content(
+                r.get("content", ""), source_label=r.get("filename", "unknown")
             )
+            sections.append(f"[Doc {i}] Source: {r.get('filename', 'unknown')}\n{content}")
 
     if web_results:
         sections.append("\n=== WEB SEARCH RESULTS ===")
         for i, r in enumerate(web_results, start=1):
+            content = sanitize_retrieved_content(
+                r.get("content", ""), source_label=r.get("url", "unknown")
+            )
             sections.append(
                 f"[Web {i}] Title: {r.get('title', 'Untitled')}\n"
                 f"URL: {r.get('url', 'unknown')}\n"
-                f"Content: {r.get('content', '')}"
+                f"Content: {content}"
             )
 
     return "\n\n".join(sections)

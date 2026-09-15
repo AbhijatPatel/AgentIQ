@@ -16,6 +16,7 @@ from app.rag.loader import DocumentLoadError, load_document
 from app.rag.splitter import split_documents
 from app.rag.vectorstore import add_documents
 from app.schemas.response import DocumentUploadResponse
+from app.utils.validators import sanitize_retrieved_content
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -51,6 +52,9 @@ async def upload_document(file: UploadFile):
 
     try:
         document = load_document(str(save_path))
+        document.page_content = sanitize_retrieved_content(
+            document.page_content, source_label=file.filename
+        )
         chunks = split_documents([document])
         chunks_added = add_documents(chunks)
     except DocumentLoadError as exc:

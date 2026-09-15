@@ -25,6 +25,9 @@ from app.schemas.response import (
     ResearchStatusResponse,
 )
 from app.utils.logger import get_logger
+from app.utils.logger import get_logger
+from app.utils.rate_limit import limiter
+from fastapi import Request as FastAPIRequest
 
 logger = get_logger(__name__)
 
@@ -61,15 +64,17 @@ def _run_research_pipeline(research_id: str, user_goal: str) -> None:
             errors=[f"Pipeline crashed: {exc}"],
         )
 
-
 @router.post("/research", response_model=ResearchStartedResponse, status_code=202)
-def start_research(request: ResearchRequest, background_tasks: BackgroundTasks):
+@limiter.limit("5/minute")
+def start_research(
+    request: FastAPIRequest, body: ResearchRequest, background_tasks: BackgroundTasks
+):
     """
     Start a new research session. Returns immediately with a research_id;
     the actual pipeline runs in the background (it takes 1-3 minutes).
     """
-    research_id = create_session(request.goal)
-    background_tasks.add_task(_run_research_pipeline, research_id, request.goal)
+    research_id = create_session(body.goal)
+    background_tasks.add_task(_run_research_pipeline, research_id, body.goal)
 
     return ResearchStartedResponse(research_id=research_id, status="running")
 

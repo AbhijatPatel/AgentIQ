@@ -13,6 +13,11 @@ from app.api.routes import documents, health, research
 from app.config.settings import settings
 from app.utils.error_handlers import register_error_handlers
 from app.database.connection import init_db
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.utils.rate_limit import limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -33,6 +38,8 @@ app = FastAPI(
 )
 
 register_error_handlers(app)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
