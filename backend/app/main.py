@@ -9,9 +9,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from app.api.routes import documents, health, research
 from app.config.settings import settings
+from app.utils.error_handlers import register_error_handlers
 from app.database.connection import init_db
 from app.utils.logger import get_logger
 
@@ -31,6 +31,8 @@ app = FastAPI(
     debug=settings.DEBUG,
     lifespan=lifespan,
 )
+
+register_error_handlers(app)
 
 app.add_middleware(
     CORSMiddleware,
