@@ -16,3 +16,4 @@ dist/
 **/data/processed/*
 !**/data/documents/.gitkeep
 !**/data/processed/.gitkeep
+docker_build_log.txt
