@@ -51,3 +51,16 @@ class DocumentUploadResponse(BaseModel):
 class HealthResponse(BaseModel):
     """Response for GET /api/health"""
     status: str
+
+class ResearchHistoryItem(BaseModel):
+    """One entry in the research history list."""
+    research_id: str
+    user_goal: str
+    status: str
+    created_at: Optional[str] = None
+    final_report_title: Optional[str] = None
+
+
+class ResearchHistoryResponse(BaseModel):
+    """Response for GET /api/research (list)"""
+    sessions: list[ResearchHistoryItem] = []

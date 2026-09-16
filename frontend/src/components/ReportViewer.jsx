@@ -84,16 +84,8 @@ export default function ReportViewer({ report, critique }) {
     }, 1500);
   };
 
-  return (
-    <div
-      style={{
-        marginTop: "2rem",
-        padding: "1.5rem",
-        border: "1px solid #e5e7eb",
-        borderRadius: "12px",
-        background: "#ffffff",
-      }}
-    >
+    return (
+    <div>
       <div
         style={{
           display: "flex",
@@ -103,12 +95,12 @@ export default function ReportViewer({ report, critique }) {
           marginBottom: "0.5rem",
         }}
       >
-        <h2 style={{ margin: 0 }}>{report.title}</h2>
+                <h2 style={{ margin: 0, fontSize: "1.5rem" }}>{report.title}</h2>
         <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
-          <button onClick={handleCopy} style={toolbarButtonStyle}>
+                  <button onClick={handleCopy} className="toolbar-btn" style={toolbarButtonStyle}>
             Copy
           </button>
-          <button onClick={() => downloadReport(report)} style={toolbarButtonStyle}>
+          <button onClick={() => downloadReport(report)} className="toolbar-btn" style={toolbarButtonStyle}>
             Download
           </button>
         </div>
@@ -140,3 +132,4 @@ const toolbarButtonStyle = {
   cursor: "pointer",
   fontSize: "0.85rem",
 };
+

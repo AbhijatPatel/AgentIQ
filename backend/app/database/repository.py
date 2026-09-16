@@ -106,3 +106,34 @@ def get_session(research_id: str, db: Optional[Session] = None) -> Optional[dict
     finally:
         if owns_session:
             db.close()
+
+def list_sessions(limit: int = 20, db: Optional[Session] = None) -> list[dict]:
+    """
+    Return the most recent research sessions, newest first.
+    Used for the research history view - does not include full
+    evidence/events to keep the response light; use get_session()
+    for full detail on one session.
+    """
+    owns_session = db is None
+    db = db or SessionLocal()
+
+    try:
+        records = (
+            db.query(ResearchSessionModel)
+            .order_by(ResearchSessionModel.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "research_id": r.research_id,
+                "user_goal": r.user_goal,
+                "status": r.status,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "final_report_title": (r.final_report or {}).get("title") if r.final_report else None,
+            }
+            for r in records
+        ]
+    finally:
+        if owns_session:
+            db.close()

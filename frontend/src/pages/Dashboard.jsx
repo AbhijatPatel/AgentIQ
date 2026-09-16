@@ -8,7 +8,8 @@ import SourceViewer from "../components/SourceViewer";
 const MIN_GOAL_LENGTH = 5;
 
 export default function Dashboard() {
-  const [goalInput, setGoalInput] = useState("");
+const [goalInput, setGoalInput] = useState("");
+const [activeFilter, setActiveFilter] = useState(null);
   const { status, events, result, error, run, reset } = useResearch();
 
   const isRunning = status === "running";
@@ -26,80 +27,51 @@ export default function Dashboard() {
   };
 
   return (
-    <div style={{ maxWidth: "800px", margin: "0 auto", padding: "2rem 1rem" }}>
-      <header style={{ marginBottom: "2rem" }}>
-        <h1 style={{ marginBottom: "0.25rem" }}>AgentIQ</h1>
-        <p style={{ color: "#6b7280" }}>Autonomous Multi-Agent Research Assistant</p>
+    <>
+        <header className="app-header">
+        <div className="logo-badge">✦ Multi-Agent AI System</div>
+        <h1>AgentIQ</h1>
+        <p>Autonomous Multi-Agent Research Assistant</p>
       </header>
 
-      <form onSubmit={handleSubmit} style={{ marginBottom: "1.5rem" }}>
+      <form onSubmit={handleSubmit} className="goal-form">
         <textarea
+          className="goal-textarea"
           value={goalInput}
           onChange={(e) => setGoalInput(e.target.value)}
           placeholder="What would you like AgentIQ to research?"
           disabled={isRunning}
           rows={3}
-          style={{
-            width: "100%",
-            padding: "0.75rem",
-            borderRadius: "8px",
-            border: "1px solid #d1d5db",
-            fontSize: "1rem",
-            fontFamily: "inherit",
-            resize: "vertical",
-          }}
         />
-        <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.75rem" }}>
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            style={{
-              padding: "0.6rem 1.5rem",
-              borderRadius: "8px",
-              border: "none",
-              background: canSubmit ? "#111827" : "#d1d5db",
-              color: "white",
-              fontWeight: 600,
-              cursor: canSubmit ? "pointer" : "not-allowed",
-            }}
-          >
+        <div className="button-row">
+          <button type="submit" disabled={!canSubmit} className="start-research-btn">
             {isRunning ? "Researching..." : "Start Research"}
           </button>
 
           {(status === "completed" || status === "failed") && (
-            <button
-              type="button"
-              onClick={handleReset}
-              style={{
-                padding: "0.6rem 1.5rem",
-                borderRadius: "8px",
-                border: "1px solid #d1d5db",
-                background: "white",
-                cursor: "pointer",
-              }}
-            >
+            <button type="button" onClick={handleReset} className="secondary-btn">
               New Research
             </button>
           )}
         </div>
       </form>
 
-      {status !== "idle" && (
-        <>
-          <AgentStatus events={events} />
-          <ResearchSteps events={events} />
-        </>
+            {status !== "idle" && (
+        <div className="pipeline-card">
+          <AgentStatus events={events} activeFilter={activeFilter} onFilterChange={setActiveFilter} />
+          <ResearchSteps events={events} activeFilter={activeFilter} />
+        </div>
       )}
 
       {error && (
         <div
           style={{
-            marginTop: "1rem",
             padding: "0.75rem 1rem",
             background: "#fef2f2",
             border: "1px solid #fecaca",
-            borderRadius: "8px",
+            borderRadius: "10px",
             color: "#b91c1c",
+            marginBottom: "1.5rem",
           }}
         >
           {error}
@@ -109,13 +81,13 @@ export default function Dashboard() {
       {result?.errors?.length > 0 && (
         <div
           style={{
-            marginTop: "1rem",
             padding: "0.75rem 1rem",
             background: "#fffbeb",
             border: "1px solid #fde68a",
-            borderRadius: "8px",
+            borderRadius: "10px",
             color: "#92400e",
             fontSize: "0.85rem",
+            marginBottom: "1.5rem",
           }}
         >
           <strong>Note:</strong> some steps had issues but the pipeline continued:
@@ -128,9 +100,16 @@ export default function Dashboard() {
       )}
 
       {result?.final_report && (
-        <ReportViewer report={result.final_report} critique={result.critique} />
+        <div className="report-card">
+          <ReportViewer report={result.final_report} critique={result.critique} />
+        </div>
       )}
-            {result?.evidence && <SourceViewer evidence={result.evidence} />}
-    </div>
+
+      {result?.evidence && (
+        <div className="sources-card">
+          <SourceViewer evidence={result.evidence} />
+        </div>
+      )}
+    </>
   );
 }

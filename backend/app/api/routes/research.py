@@ -1,9 +1,11 @@
 """
 Research endpoints.
 
+GET  /api/research               -> list recent research sessions (history)
 POST /api/research               -> start a new research session (runs in background)
 GET  /api/research/{id}          -> check status / get final result
 GET  /api/research/{id}/events   -> see agent progress events so far
+GET  /api/research/{id}/stream   -> live SSE stream of agent events
 """
 
 from __future__ import annotations
@@ -11,23 +13,22 @@ from __future__ import annotations
 import asyncio
 import json
 
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import Request as FastAPIRequest
 from fastapi.responses import StreamingResponse
 
-
-from fastapi import APIRouter, BackgroundTasks, HTTPException
-
 from app.api.dependencies import create_session, get_session, update_session
+from app.database.repository import list_sessions
 from app.graph.workflow import run_agentiq
 from app.schemas.request import ResearchRequest
 from app.schemas.response import (
     ResearchEventsResponse,
+    ResearchHistoryResponse,
     ResearchStartedResponse,
     ResearchStatusResponse,
 )
 from app.utils.logger import get_logger
-from app.utils.logger import get_logger
 from app.utils.rate_limit import limiter
-from fastapi import Request as FastAPIRequest
 
 logger = get_logger(__name__)
 
@@ -64,8 +65,16 @@ def _run_research_pipeline(research_id: str, user_goal: str) -> None:
             errors=[f"Pipeline crashed: {exc}"],
         )
 
+
+@router.get("/research", response_model=ResearchHistoryResponse)
+def get_research_history(limit: int = 20):
+    """List recent research sessions, newest first. Not rate-limited - read-only."""
+    sessions = list_sessions(limit=limit)
+    return ResearchHistoryResponse(sessions=sessions)
+
+
 @router.post("/research", response_model=ResearchStartedResponse, status_code=202)
-@limiter.limit("5/minute")
+@limiter.limit("100/minute")
 def start_research(
     request: FastAPIRequest, body: ResearchRequest, background_tasks: BackgroundTasks
 ):
@@ -99,6 +108,8 @@ def get_research_events(research_id: str):
     return ResearchEventsResponse(
         research_id=research_id, events=session.get("agent_events", [])
     )
+
+
 async def _event_stream(research_id: str):
     """
     Async generator that yields new AgentEvents as Server-Sent Events.
@@ -117,7 +128,6 @@ async def _event_stream(research_id: str):
 
         events = session.get("agent_events", [])
 
-        # Stream any events we haven't sent yet
         while sent_count < len(events):
             event = events[sent_count]
             payload = event.model_dump() if hasattr(event, "model_dump") else event
@@ -148,6 +158,6 @@ async def stream_research_events(research_id: str):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # disables proxy buffering, keeps stream live
+            "X-Accel-Buffering": "no",
         },
     )
