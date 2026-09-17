@@ -17,6 +17,7 @@ from app.llm.prompts import RESEARCHER_SYSTEM_PROMPT, researcher_user_prompt
 from app.rag.retriever import retrieve
 from app.tools.web_search import web_search, WebSearchError
 from app.utils.validators import sanitize_retrieved_content
+from app.tools.web_search import web_search, image_search, WebSearchError
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -73,7 +74,7 @@ def _normalize_confidence(value: str) -> ConfidenceLevel:
         return ConfidenceLevel.LOW  # safer default: treat unclear confidence as low
 
 
-def run_researcher(task: Task) -> list[Evidence]:
+def run_researcher(task: Task) -> tuple[list[Evidence], list[dict]]:
     """
     Run the Researcher agent on a single task.
 
@@ -81,9 +82,8 @@ def run_researcher(task: Task) -> list[Evidence]:
         task: A Task object from the Planner.
 
     Returns:
-        A list of validated Evidence objects. May be empty if no
-        material was found or no valid claims could be extracted -
-        this is a valid outcome, not an error, per Rule 7 (never fabricate).
+        A tuple of (evidence_list, images). Images may be empty if none
+        were found - this is a valid outcome, not an error.
 
     Raises:
         ResearcherError: if the LLM call itself fails.
@@ -98,6 +98,12 @@ def run_researcher(task: Task) -> list[Evidence]:
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"RAG retrieval failed for task {task.id}: {exc}")
 
+    images: list[dict] = []
+    try:
+        images = image_search(task.description, max_results=4)
+    except WebSearchError as exc:
+        logger.warning(f"Image search failed for task {task.id}: {exc}")
+
     web_results: list[dict] = []
     try:
         web_results = web_search(task.description, max_results=WEB_MAX_RESULTS)
@@ -106,7 +112,7 @@ def run_researcher(task: Task) -> list[Evidence]:
 
     if not rag_results and not web_results:
         logger.warning(f"No material found for task {task.id}; returning no evidence.")
-        return []
+        return [], []
 
     raw_material = _format_raw_material(rag_results, web_results)
 
@@ -147,4 +153,4 @@ def run_researcher(task: Task) -> list[Evidence]:
         logger.info(f"Researcher noted gaps for task {task.id}: {gaps}")
 
     logger.info(f"Researcher completed task {task.id} with {len(evidence_list)} evidence items")
-    return evidence_list
+    return evidence_list, images

@@ -68,11 +68,12 @@ def _mock_llm_responses():
     return [planner_response, researcher_response, researcher_response, writer_response, critic_response]
 
 
+@patch("app.agents.researcher.image_search")
 @patch("app.agents.researcher.web_search")
 @patch("app.agents.researcher.retrieve")
 @patch("app.llm.client.llm_client.generate_json")
 def test_full_pipeline_end_to_end_produces_final_report(
-    mock_generate_json, mock_retrieve, mock_web_search
+    mock_generate_json, mock_retrieve, mock_web_search, mock_image_search
 ):
     mock_generate_json.side_effect = _mock_llm_responses()
     mock_retrieve.return_value = []
@@ -116,11 +117,12 @@ def test_full_pipeline_handles_planner_failure_gracefully(mock_generate_json):
     assert result.get("final_report") is None
 
 
+@patch("app.agents.researcher.image_search")
 @patch("app.agents.researcher.web_search")
 @patch("app.agents.researcher.retrieve")
 @patch("app.llm.client.llm_client.generate_json")
-def test_full_pipeline_handles_no_research_material_found(
-    mock_generate_json, mock_retrieve, mock_web_search
+def test_full_pipeline_end_to_end_produces_final_report(
+    mock_generate_json, mock_retrieve, mock_web_search, mock_image_search
 ):
     """
     If both RAG and web search return nothing for every task, the
@@ -154,3 +156,4 @@ def test_full_pipeline_handles_no_research_material_found(
     assert result["evidence"] == []
     assert result["final_report"] is not None
     assert "no evidence" in result["final_report"].limitations.lower()
+    mock_image_search.return_value = []

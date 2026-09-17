@@ -138,6 +138,7 @@ class AgentState(TypedDict, total=False):
     # Researcher output
     evidence: list[Evidence]
     sources: list[Source]
+    images: list[dict]
 
     # Writer output
     draft: DraftReport
@@ -155,17 +156,12 @@ class AgentState(TypedDict, total=False):
 
 
 def create_initial_state(user_goal: str) -> AgentState:
-    """
-    Build a fresh AgentState for a new research session.
-
-    This is the single entry point every research run should start from,
-    so we never forget to initialize a required field.
-    """
     return AgentState(
         user_goal=user_goal,
         tasks=[],
         evidence=[],
         sources=[],
+        images=[],
         revision_count=0,
         agent_events=[],
         errors=[],

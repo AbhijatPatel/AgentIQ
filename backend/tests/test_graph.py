@@ -56,8 +56,8 @@ def test_researcher_node_combines_evidence_across_tasks(mock_run_researcher):
     task2 = Task(id=2, description="Task 2")
 
     mock_run_researcher.side_effect = [
-        [Evidence(task_id=1, claim="Claim A", source_title="Source A")],
-        [Evidence(task_id=2, claim="Claim B", source_title="Source B")],
+        ([Evidence(task_id=1, claim="Claim A", source_title="Source A")], []),
+        ([Evidence(task_id=2, claim="Claim B", source_title="Source B")], []),
     ]
 
     state = create_initial_state("Research AI")
@@ -84,9 +84,8 @@ def test_researcher_node_continues_after_one_task_fails(mock_run_researcher):
 
     mock_run_researcher.side_effect = [
         ResearcherError("failed"),
-        [Evidence(task_id=2, claim="Claim B", source_title="Source B")],
+        ([Evidence(task_id=2, claim="Claim B", source_title="Source B")], []),
     ]
-
     state = create_initial_state("Research AI")
     state["tasks"] = [task1, task2]
     result = researcher_node(state)
