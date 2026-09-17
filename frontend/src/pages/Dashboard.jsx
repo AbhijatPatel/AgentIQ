@@ -5,6 +5,8 @@ import ResearchSteps from "../components/ResearchSteps";
 import ReportViewer from "../components/ReportViewer";
 import SourceViewer from "../components/SourceViewer";
 import HistoryPanel from "../components/HistoryPanel";
+import ImageGallery from "../components/ImageGallery";
+
 
 const MIN_GOAL_LENGTH = 5;
 
@@ -117,9 +119,9 @@ const { status, events, result, error, run, reset, loadPastSession } = useResear
         </div>
       )}
 
-      {result?.evidence && (
+      {result?.images && result.images.length > 0 && (
         <div className="sources-card">
-          <SourceViewer evidence={result.evidence} />
+          <ImageGallery images={result.images} />
         </div>
       )}
     </>
