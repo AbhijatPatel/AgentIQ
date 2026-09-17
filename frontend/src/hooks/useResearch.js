@@ -75,5 +75,14 @@ export function useResearch() {
     }
   }, [reset]);
 
-  return { researchId, status, events, result, error, run, reset };
+  const loadPastSession = useCallback((sessionData) => {
+    eventSourceRef.current?.close();
+    setResearchId(sessionData.research_id);
+    setEvents(sessionData.agent_events || []);
+    setResult(sessionData);
+    setStatus(sessionData.status);
+    setError(null);
+  }, []);
+
+  return { researchId, status, events, result, error, run, reset, loadPastSession };
 }

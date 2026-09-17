@@ -4,22 +4,25 @@ import AgentStatus from "../components/AgentStatus";
 import ResearchSteps from "../components/ResearchSteps";
 import ReportViewer from "../components/ReportViewer";
 import SourceViewer from "../components/SourceViewer";
+import HistoryPanel from "../components/HistoryPanel";
 
 const MIN_GOAL_LENGTH = 5;
 
 export default function Dashboard() {
 const [goalInput, setGoalInput] = useState("");
 const [activeFilter, setActiveFilter] = useState(null);
-  const { status, events, result, error, run, reset } = useResearch();
+const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+const { status, events, result, error, run, reset, loadPastSession } = useResearch();
 
   const isRunning = status === "running";
   const canSubmit = goalInput.trim().length >= MIN_GOAL_LENGTH && !isRunning;
 
   const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!canSubmit) return;
-    run(goalInput.trim());
-  };
+  e.preventDefault();
+  if (!canSubmit) return;
+  run(goalInput.trim());
+  setTimeout(() => setHistoryRefreshKey((k) => k + 1), 90000); // refresh history ~90s later
+};
 
   const handleReset = () => {
     reset();
@@ -33,6 +36,15 @@ const [activeFilter, setActiveFilter] = useState(null);
         <h1>AgentIQ</h1>
         <p>Autonomous Multi-Agent Research Assistant</p>
       </header>
+
+            <HistoryPanel
+        refreshKey={historyRefreshKey}
+        onSelectSession={async (id) => {
+          const res = await fetch(`http://localhost:8000/api/research/${id}`);
+          const data = await res.json();
+          loadPastSession(data);
+        }}
+      />
 
       <form onSubmit={handleSubmit} className="goal-form">
         <textarea
