@@ -24,7 +24,7 @@ class ResearchStartedResponse(BaseModel):
 class ResearchStatusResponse(BaseModel):
     """Response for GET /api/research/{id}"""
     research_id: str
-    status: str  # "running" | "completed" | "failed"
+    status: str
     user_goal: str
     tasks: list[Task] = []
     evidence: list[Evidence] = []
@@ -33,6 +33,7 @@ class ResearchStatusResponse(BaseModel):
     final_report: Optional[DraftReport] = None
     critique: Optional[Critique] = None
     errors: list[str] = []
+    images: list[dict] = []
 
 
 class ResearchEventsResponse(BaseModel):

@@ -30,6 +30,7 @@ def _model_to_dict(model: ResearchSessionModel) -> dict:
         "user_goal": model.user_goal,
         "tasks": model.tasks or [],
         "evidence": model.evidence or [],
+        "images": model.images or [],
         "evidence_count": model.evidence_count,
         "revision_count": model.revision_count,
         "final_report": model.final_report,
