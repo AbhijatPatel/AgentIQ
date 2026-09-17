@@ -108,3 +108,60 @@ def _extract_domain(url: str | None) -> str | None:
         return urlparse(url).netloc or None
     except Exception:  # noqa: BLE001
         return None
+
+def image_search(query: str, max_results: int = 6) -> list[dict]:
+    """
+    Search for images related to a query using Tavily's include_images option.
+
+    Returns a list of dicts, each with:
+        - url: direct image URL
+        - description: short description of the image, if available
+        - source_query: the query that found it (useful for grouping)
+
+    Returns an empty list if the query is empty or no images are found.
+    Never fabricates image URLs - only returns what Tavily actually found.
+
+    Raises:
+        WebSearchError: on auth failure, rate limiting, or unexpected errors.
+    """
+    if not query or not query.strip():
+        logger.warning("Empty query passed to image_search(); returning no results.")
+        return []
+
+    logger.info(f"Image search: {query!r}")
+
+    try:
+        client = _get_client()
+        response = client.search(
+            query=query,
+            max_results=max_results,
+            search_depth="basic",
+            include_images=True,
+            include_image_descriptions=True,
+        )
+    except UsageLimitExceededError as exc:
+        logger.error(f"Tavily rate/usage limit exceeded: {exc}")
+        raise WebSearchError("Image search rate limit reached. Please wait and retry.") from exc
+    except BadRequestError as exc:
+        logger.error(f"Tavily bad request: {exc}")
+        raise WebSearchError(f"Image search request was invalid: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Unexpected image search error: {exc}")
+        raise WebSearchError(f"Image search failed: {exc}") from exc
+
+    raw_images = response.get("images", [])
+    if not raw_images:
+        logger.info(f"No images found for query: {query!r}")
+        return []
+
+    formatted = [
+        {
+            "url": img.get("url"),
+            "description": img.get("description") or "",
+        }
+        for img in raw_images
+        if img.get("url")
+    ]
+
+    logger.info(f"Image search returned {len(formatted)} images for: {query!r}")
+    return formatted
