@@ -8,6 +8,8 @@ clean, structured results instead of raw HTML.
 
 from __future__ import annotations
 
+import requests
+
 from tavily import TavilyClient
 from tavily.errors import (
     BadRequestError,
@@ -164,4 +166,82 @@ def image_search(query: str, max_results: int = 6) -> list[dict]:
     ]
 
     logger.info(f"Image search returned {len(formatted)} images for: {query!r}")
+    return formatted
+
+PEXELS_VIDEO_SEARCH_URL = "https://api.pexels.com/videos/search"
+
+
+def video_search(query: str, max_results: int = 4) -> list[dict]:
+    """
+    Search for videos related to a query using the Pexels Video API.
+
+    Note: Pexels provides stock/b-roll footage, not topical educational
+    content - results are keyword-matched generic video clips, useful
+    as visual accompaniment rather than direct topical relevance.
+
+    Returns a list of dicts, each with:
+        - title: a generated label (Pexels videos have no titles, so
+          we use the photographer/user name as attribution)
+        - url: link to the video page on Pexels
+        - thumbnail: preview image URL
+        - preview_video_url: direct playable video file URL (small size)
+
+    Returns an empty list if the query is empty, no API key is set,
+    or no videos are found.
+
+    Raises:
+        WebSearchError: on auth failure, rate limiting, or unexpected errors.
+    """
+    if not query or not query.strip():
+        logger.warning("Empty query passed to video_search(); returning no results.")
+        return []
+
+    if not settings.PEXELS_API_KEY:
+        logger.warning("PEXELS_API_KEY is not set; skipping video search.")
+        return []
+
+    logger.info(f"Video search: {query!r}")
+
+    try:
+        response = requests.get(
+            PEXELS_VIDEO_SEARCH_URL,
+            headers={"Authorization": settings.PEXELS_API_KEY},
+            params={"query": query, "per_page": max_results},
+            timeout=10,
+        )
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as exc:
+        if response.status_code == 429:
+            logger.error(f"Pexels rate limit exceeded: {exc}")
+            raise WebSearchError("Video search rate limit reached. Please wait and retry.") from exc
+        logger.error(f"Pexels API HTTP error: {exc}")
+        raise WebSearchError(f"Video search request failed: {exc}") from exc
+    except requests.exceptions.RequestException as exc:
+        logger.error(f"Unexpected video search error: {exc}")
+        raise WebSearchError(f"Video search failed: {exc}") from exc
+
+    data = response.json()
+    videos = data.get("videos", [])
+
+    if not videos:
+        logger.info(f"No videos found for query: {query!r}")
+        return []
+
+    formatted = []
+    for video in videos:
+        video_files = video.get("video_files", [])
+        small_file = next((f for f in video_files if f.get("quality") == "sd"), None)
+        preview_url = small_file.get("link") if small_file else (
+            video_files[0].get("link") if video_files else None
+        )
+        formatted.append(
+            {
+                "title": f"Video by {video.get('user', {}).get('name', 'Pexels')}",
+                "url": video.get("url"),
+                "thumbnail": video.get("image"),
+                "preview_video_url": preview_url,
+            }
+        )
+
+    logger.info(f"Video search returned {len(formatted)} videos for: {query!r}")
     return formatted
