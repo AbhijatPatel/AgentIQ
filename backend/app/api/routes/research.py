@@ -13,11 +13,16 @@ from __future__ import annotations
 
 import asyncio
 import json
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi import Request as FastAPIRequest
 from fastapi.responses import StreamingResponse
 
-from app.api.dependencies import create_session, get_session, update_session
+from app.api.dependencies import (
+    create_session,
+    get_current_user,
+    get_session,
+    update_session,
+)
 from app.database.repository import list_sessions
 from app.graph.workflow import run_agentiq
 from app.schemas.request import ResearchRequest
@@ -97,6 +102,7 @@ def start_research(
     request: FastAPIRequest,
     body: ResearchRequest,
     background_tasks: BackgroundTasks,
+    current_user=Depends(get_current_user),
 ):
     """
     Start a new research session after validating the user goal.
