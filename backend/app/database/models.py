@@ -32,6 +32,7 @@ class ResearchSessionModel(Base):
     evidence_count: Mapped[int] = mapped_column(Integer, default=0)
     evidence: Mapped[list] = mapped_column(JSON, default=list)
     images: Mapped[list] = mapped_column(JSON, default=list)
+    videos: Mapped[list] = mapped_column(JSON, default=list)
     revision_count: Mapped[int] = mapped_column(Integer, default=0)
     final_report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     critique: Mapped[dict | None] = mapped_column(JSON, nullable=True)

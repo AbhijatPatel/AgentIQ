@@ -51,6 +51,7 @@ def _run_research_pipeline(research_id: str, user_goal: str) -> None:
             evidence=final_state.get("evidence", []),
             evidence_count=len(final_state.get("evidence", [])),
             images=final_state.get("images", []),
+            videos=final_state.get("videos", []),
             revision_count=final_state.get("revision_count", 0),
             final_report=final_state.get("final_report"),
             critique=final_state.get("critique"),

@@ -34,6 +34,7 @@ class ResearchStatusResponse(BaseModel):
     critique: Optional[Critique] = None
     errors: list[str] = []
     images: list[dict] = []
+    videos: list[dict] = []
 
 
 class ResearchEventsResponse(BaseModel):
