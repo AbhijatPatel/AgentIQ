@@ -139,6 +139,7 @@ class AgentState(TypedDict, total=False):
     evidence: list[Evidence]
     sources: list[Source]
     images: list[dict]
+    videos: list[dict]
 
     # Writer output
     draft: DraftReport
@@ -162,6 +163,7 @@ def create_initial_state(user_goal: str) -> AgentState:
         evidence=[],
         sources=[],
         images=[],
+        videos=[],
         revision_count=0,
         agent_events=[],
         errors=[],

@@ -17,7 +17,7 @@ from app.llm.prompts import RESEARCHER_SYSTEM_PROMPT, researcher_user_prompt
 from app.rag.retriever import retrieve
 from app.tools.web_search import web_search, WebSearchError
 from app.utils.validators import sanitize_retrieved_content
-from app.tools.web_search import web_search, image_search, WebSearchError
+from app.tools.web_search import web_search, image_search, video_search, WebSearchError
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -74,7 +74,7 @@ def _normalize_confidence(value: str) -> ConfidenceLevel:
         return ConfidenceLevel.LOW  # safer default: treat unclear confidence as low
 
 
-def run_researcher(task: Task) -> tuple[list[Evidence], list[dict]]:
+def run_researcher(task: Task) -> tuple[list[Evidence], list[dict], list[dict]]:
     """
     Run the Researcher agent on a single task.
 
@@ -104,6 +104,12 @@ def run_researcher(task: Task) -> tuple[list[Evidence], list[dict]]:
     except WebSearchError as exc:
         logger.warning(f"Image search failed for task {task.id}: {exc}")
 
+        videos: list[dict] = []
+    try:
+        videos = video_search(task.description, max_results=3)
+    except WebSearchError as exc:
+        logger.warning(f"Video search failed for task {task.id}: {exc}")
+
     web_results: list[dict] = []
     try:
         web_results = web_search(task.description, max_results=WEB_MAX_RESULTS)
@@ -111,8 +117,8 @@ def run_researcher(task: Task) -> tuple[list[Evidence], list[dict]]:
         logger.warning(f"Web search failed for task {task.id}: {exc}")
 
     if not rag_results and not web_results:
-        logger.warning(f"No material found for task {task.id}; returning no evidence.")
-        return [], []
+     logger.warning(f"No material found for task {task.id}; returning no evidence.")
+     return [], [], []
 
     raw_material = _format_raw_material(rag_results, web_results)
 
@@ -153,4 +159,4 @@ def run_researcher(task: Task) -> tuple[list[Evidence], list[dict]]:
         logger.info(f"Researcher noted gaps for task {task.id}: {gaps}")
 
     logger.info(f"Researcher completed task {task.id} with {len(evidence_list)} evidence items")
-    return evidence_list, images
+    return evidence_list, images, videos

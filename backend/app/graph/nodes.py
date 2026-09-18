@@ -72,6 +72,7 @@ def researcher_node(state: AgentState) -> dict:
 
     all_evidence = []
     all_images = []
+    all_videos = []
     errors = list(state.get("errors", []))
 
     for task in tasks:
@@ -79,9 +80,10 @@ def researcher_node(state: AgentState) -> dict:
             events, "researcher", "tool_call", f"Researching: {task.description}"
         )
         try:
-            evidence, images = run_researcher(task)
+            evidence, images, videos = run_researcher(task)
             all_evidence.extend(evidence)
             all_images.extend(images)
+            all_videos.extend(videos)
             events = append_event(
                 events,
                 "researcher",
@@ -104,7 +106,7 @@ def researcher_node(state: AgentState) -> dict:
         status="success",
     )
 
-    return {"evidence": all_evidence, "images": all_images, "errors": errors, "agent_events": events}
+    return {"evidence": all_evidence, "images": all_images, "videos": all_videos, "errors": errors, "agent_events": events}
 
 
 def writer_critic_node(state: AgentState) -> dict:
