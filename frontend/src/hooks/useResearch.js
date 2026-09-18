@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getResearchStatus, getResearchStreamUrl, startResearch } from "../services/api";
 
 /**
@@ -14,6 +14,11 @@ export function useResearch() {
   const [error, setError] = useState(null);
 
   const eventSourceRef = useRef(null);
+  useEffect(() => {
+  return () => {
+    eventSourceRef.current?.close();
+  };
+}, []);
 
   const reset = useCallback(() => {
     eventSourceRef.current?.close();
