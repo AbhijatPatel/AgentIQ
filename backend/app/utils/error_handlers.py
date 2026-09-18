@@ -20,12 +20,24 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def _error_response(status_code: int, error_code: str, message: str, detail: str | None = None) -> JSONResponse:
-    body = {"error": error_code, "message": message}
+def _error_response(
+    status_code: int,
+    error_code: str,
+    message: str,
+    detail: str | None = None,
+) -> JSONResponse:
+    body: dict[str, str] = {
+        "error": error_code,
+        "message": message,
+    }
+
     if detail and settings.DEBUG:
         body["detail"] = detail
-    return JSONResponse(status_code=status_code, content=body)
 
+    return JSONResponse(
+        status_code=status_code,
+        content=body,
+    )
 
 def register_error_handlers(app: FastAPI) -> None:
     """Attach all global exception handlers to the FastAPI app."""

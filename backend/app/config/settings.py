@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,27 +18,26 @@ class Settings(BaseSettings):
 
     # LLM configuration
     OPENAI_API_KEY: str = ""
-    LLM_BASE_URL: str = ""   # empty = use OpenAI's default; set this for Groq/other providers
+    LLM_BASE_URL: str = ""
     LLM_MODEL: str = "gpt-4o-mini"
     LLM_TIMEOUT_SECONDS: int = 60
     LLM_MAX_RETRIES: int = 2
     LLM_TEMPERATURE: float = 0.2
 
-        # Web Search
+    # Web Search
     TAVILY_API_KEY: str = ""
 
-        # Database
+    # Database
     DATABASE_URL: str = ""
 
-        # Video Search
+    # Video Search
     PEXELS_API_KEY: str = ""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=Path(__file__).resolve().parents[2] / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
 
 settings = Settings()
-

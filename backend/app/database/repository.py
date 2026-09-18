@@ -112,30 +112,46 @@ def get_session(research_id: str, db: Optional[Session] = None) -> Optional[dict
 def list_sessions(limit: int = 20, db: Optional[Session] = None) -> list[dict]:
     """
     Return the most recent research sessions, newest first.
-    Used for the research history view - does not include full
-    evidence/events to keep the response light; use get_session()
-    for full detail on one session.
+
+    Only the fields required by the history API are selected, avoiding
+    loading large evidence, image, video, and event payloads.
     """
     owns_session = db is None
     db = db or SessionLocal()
 
     try:
         records = (
-            db.query(ResearchSessionModel)
+            db.query(
+                ResearchSessionModel.research_id,
+                ResearchSessionModel.user_goal,
+                ResearchSessionModel.status,
+                ResearchSessionModel.created_at,
+                ResearchSessionModel.final_report,
+            )
             .order_by(ResearchSessionModel.created_at.desc())
             .limit(limit)
             .all()
         )
+
         return [
             {
-                "research_id": r.research_id,
-                "user_goal": r.user_goal,
-                "status": r.status,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-                "final_report_title": (r.final_report or {}).get("title") if r.final_report else None,
+                "research_id": record.research_id,
+                "user_goal": record.user_goal,
+                "status": record.status,
+                "created_at": (
+                    record.created_at.isoformat()
+                    if record.created_at
+                    else None
+                ),
+                "final_report_title": (
+                    (record.final_report or {}).get("title")
+                    if record.final_report
+                    else None
+                ),
             }
-            for r in records
+            for record in records
         ]
+
     finally:
         if owns_session:
             db.close()

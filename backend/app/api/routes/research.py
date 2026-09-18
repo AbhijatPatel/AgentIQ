@@ -1,3 +1,4 @@
+
 """
 Research endpoints.
 
@@ -12,8 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi import Request as FastAPIRequest
 from fastapi.responses import StreamingResponse
 
@@ -28,6 +28,10 @@ from app.schemas.response import (
     ResearchStatusResponse,
 )
 from app.utils.logger import get_logger
+from app.utils.prompt_security import (
+    PromptInjectionError,
+    validate_prompt_safety,
+)
 from app.utils.rate_limit import limiter
 
 logger = get_logger(__name__)
@@ -59,8 +63,10 @@ def _run_research_pipeline(research_id: str, user_goal: str) -> None:
             agent_events=final_state.get("agent_events", []),
         )
         logger.info(f"Research session {research_id} completed")
+
     except Exception as exc:  # noqa: BLE001 - background task must never crash silently
         logger.error(f"Research session {research_id} failed completely: {exc}")
+
         update_session(
             research_id,
             status="failed",
@@ -69,33 +75,72 @@ def _run_research_pipeline(research_id: str, user_goal: str) -> None:
 
 
 @router.get("/research", response_model=ResearchHistoryResponse)
-def get_research_history(limit: int = 20):
+def get_research_history(
+    limit: int = Query(
+        default=20,
+        ge=1,
+        le=100,
+        description="Maximum number of research sessions to return.",
+    )
+):
     """List recent research sessions, newest first. Not rate-limited - read-only."""
     sessions = list_sessions(limit=limit)
-    return ResearchHistoryResponse(sessions=sessions)
+
+    return ResearchHistoryResponse(
+        sessions=sessions
+    )
 
 
 @router.post("/research", response_model=ResearchStartedResponse, status_code=202)
 @limiter.limit("100/minute")
 def start_research(
-    request: FastAPIRequest, body: ResearchRequest, background_tasks: BackgroundTasks
+    request: FastAPIRequest,
+    body: ResearchRequest,
+    background_tasks: BackgroundTasks,
 ):
     """
-    Start a new research session. Returns immediately with a research_id;
-    the actual pipeline runs in the background (it takes 1-3 minutes).
-    """
-    research_id = create_session(body.goal)
-    background_tasks.add_task(_run_research_pipeline, research_id, body.goal)
+    Start a new research session after validating the user goal.
 
-    return ResearchStartedResponse(research_id=research_id, status="running")
+    The goal is checked for potential prompt injection patterns before
+    the research session is created or the background pipeline starts.
+    """
+    try:
+        safe_goal = validate_prompt_safety(body.goal)
+
+    except PromptInjectionError as exc:
+        logger.warning(
+            f"Blocked potentially unsafe research prompt: {exc}"
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    research_id = create_session(safe_goal)
+
+    background_tasks.add_task(
+        _run_research_pipeline,
+        research_id,
+        safe_goal,
+    )
+
+    return ResearchStartedResponse(
+        research_id=research_id,
+        status="running",
+    )
 
 
 @router.get("/research/{research_id}", response_model=ResearchStatusResponse)
 def get_research_status(research_id: str):
     """Get the current status and (if completed) the final report."""
     session = get_session(research_id)
+
     if session is None:
-        raise HTTPException(status_code=404, detail="Research session not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Research session not found",
+        )
 
     return ResearchStatusResponse(**session)
 
@@ -104,11 +149,16 @@ def get_research_status(research_id: str):
 def get_research_events(research_id: str):
     """Get all agent events emitted so far for this session."""
     session = get_session(research_id)
+
     if session is None:
-        raise HTTPException(status_code=404, detail="Research session not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Research session not found",
+        )
 
     return ResearchEventsResponse(
-        research_id=research_id, events=session.get("agent_events", [])
+        research_id=research_id,
+        events=session.get("agent_events", []),
     )
 
 
@@ -124,21 +174,39 @@ async def _event_stream(research_id: str):
 
     while True:
         session = get_session(research_id)
+
         if session is None:
-            yield f"data: {json.dumps({'event': 'error', 'message': 'Session not found'})}\n\n"
+            yield (
+                f"data: {json.dumps({'event': 'error', 'message': 'Session not found'})}"
+                "\n\n"
+            )
             return
 
         events = session.get("agent_events", [])
 
         while sent_count < len(events):
             event = events[sent_count]
-            payload = event.model_dump() if hasattr(event, "model_dump") else event
-            yield f"data: {json.dumps(payload, default=str)}\n\n"
+
+            payload = (
+                event.model_dump()
+                if hasattr(event, "model_dump")
+                else event
+            )
+
+            yield (
+                f"data: {json.dumps(payload, default=str)}"
+                "\n\n"
+            )
+
             sent_count += 1
 
         status = session.get("status")
+
         if status in ("completed", "failed") and sent_count >= len(events):
-            yield f"data: {json.dumps({'event': 'done', 'status': status})}\n\n"
+            yield (
+                f"data: {json.dumps({'event': 'done', 'status': status})}"
+                "\n\n"
+            )
             return
 
         await asyncio.sleep(0.5)
@@ -151,8 +219,12 @@ async def stream_research_events(research_id: str):
     research pipeline runs, instead of requiring the frontend to poll.
     """
     session = get_session(research_id)
+
     if session is None:
-        raise HTTPException(status_code=404, detail="Research session not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Research session not found",
+        )
 
     return StreamingResponse(
         _event_stream(research_id),

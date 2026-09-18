@@ -5,6 +5,7 @@ import ResearchSteps from "../components/ResearchSteps";
 import ReportViewer from "../components/ReportViewer";
 import SourceViewer from "../components/SourceViewer";
 import HistoryPanel from "../components/HistoryPanel";
+import VideoGallery from "../components/VideoGallery";
 import ImageGallery from "../components/ImageGallery";
 
 
@@ -119,9 +120,21 @@ const { status, events, result, error, run, reset, loadPastSession } = useResear
         </div>
       )}
 
+    {result?.evidence && result.evidence.length > 0 && (
+  <div className="sources-card">
+    <SourceViewer evidence={result.evidence} />
+  </div>
+)}
+
       {result?.images && result.images.length > 0 && (
         <div className="sources-card">
           <ImageGallery images={result.images} />
+        </div>
+      )}
+
+          {result?.videos && result.videos.length > 0 && (
+        <div className="sources-card">
+          <VideoGallery videos={result.videos} />
         </div>
       )}
     </>

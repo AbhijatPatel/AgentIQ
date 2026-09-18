@@ -18,6 +18,7 @@ from app.agents.planner import run_planner, PlannerError
 from app.agents.researcher import run_researcher, ResearcherError
 from app.graph.events import append_event
 from app.graph.state import AgentState
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.observability import timed_stage
 from app.utils.logger import get_logger
 
@@ -52,8 +53,8 @@ def planner_node(state: AgentState) -> dict:
 
 def researcher_node(state: AgentState) -> dict:
     """
-    Run the Researcher agent on every task produced by the Planner.
-    Writes combined 'evidence' to state.
+    Run the Researcher agent on all tasks in parallel.
+    Writes combined evidence, images, and videos to state.
     """
     logger.info("[Graph] Entering researcher_node")
     events = state.get("agent_events", [])
@@ -64,10 +65,10 @@ def researcher_node(state: AgentState) -> dict:
         events = append_event(
             events, "researcher", "completed", "No tasks to research", status="success"
         )
-        return {"evidence": [], "agent_events": events}
+        return {"evidence": [], "images": [], "videos": [], "agent_events": events}
 
     events = append_event(
-        events, "researcher", "started", f"Researching {len(tasks)} tasks..."
+        events, "researcher", "started", f"Researching {len(tasks)} tasks in parallel..."
     )
 
     all_evidence = []
@@ -75,28 +76,69 @@ def researcher_node(state: AgentState) -> dict:
     all_videos = []
     errors = list(state.get("errors", []))
 
-    for task in tasks:
-        events = append_event(
-            events, "researcher", "tool_call", f"Researching: {task.description}"
-        )
-        try:
-            evidence, images, videos = run_researcher(task)
-            all_evidence.extend(evidence)
-            all_images.extend(images)
-            all_videos.extend(videos)
-            events = append_event(
-                events,
-                "researcher",
-                "tool_result",
-                f"Found {len(evidence)} evidence items for task {task.id}",
-                status="success",
-            )
-        except ResearcherError as exc:
-            logger.error(f"[Graph] Researcher failed on task {task.id}: {exc}")
-            errors.append(f"Researcher failed on task {task.id}: {exc}")
-            events = append_event(
-                events, "researcher", "failed", f"Task {task.id} failed: {exc}", status="error"
-            )
+    def research_task(task):
+        logger.info(f"[Graph] Starting research for task {task.id}: {task.description}")
+        return task, run_researcher(task)
+
+    max_workers = min(len(tasks), 5)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_task = {
+            executor.submit(research_task, task): task
+            for task in tasks
+        }
+
+        for future in as_completed(future_to_task):
+            task = future_to_task[future]
+
+            try:
+                _, (evidence, images, videos) = future.result()
+
+                all_evidence.extend(evidence)
+                all_images.extend(images)
+                all_videos.extend(videos)
+
+                events = append_event(
+                    events,
+                    "researcher",
+                    "tool_result",
+                    f"Found {len(evidence)} evidence items for task {task.id}",
+                    status="success",
+                )
+
+            except ResearcherError as exc:
+                logger.error(
+                    f"[Graph] Researcher failed on task {task.id}: {exc}"
+                )
+
+                errors.append(
+                    f"Researcher failed on task {task.id}: {exc}"
+                )
+
+                events = append_event(
+                    events,
+                    "researcher",
+                    "failed",
+                    f"Task {task.id} failed: {exc}",
+                    status="error",
+                )
+
+            except Exception as exc:
+                logger.exception(
+                    f"[Graph] Unexpected researcher error on task {task.id}: {exc}"
+                )
+
+                errors.append(
+                    f"Researcher failed on task {task.id}: {exc}"
+                )
+
+                events = append_event(
+                    events,
+                    "researcher",
+                    "failed",
+                    f"Task {task.id} failed unexpectedly: {exc}",
+                    status="error",
+                )
 
     events = append_event(
         events,
@@ -106,8 +148,20 @@ def researcher_node(state: AgentState) -> dict:
         status="success",
     )
 
-    return {"evidence": all_evidence, "images": all_images, "videos": all_videos, "errors": errors, "agent_events": events}
+    logger.info(
+        f"[Graph] Researcher completed: "
+        f"{len(all_evidence)} evidence, "
+        f"{len(all_images)} images, "
+        f"{len(all_videos)} videos"
+    )
 
+    return {
+        "evidence": all_evidence,
+        "images": all_images,
+        "videos": all_videos,
+        "errors": errors,
+        "agent_events": events,
+    }
 
 def writer_critic_node(state: AgentState) -> dict:
     """
