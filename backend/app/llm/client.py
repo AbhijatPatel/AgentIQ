@@ -412,43 +412,42 @@ User request:
         cleaned = response.strip()
 
         if cleaned.startswith("```"):
-
-            cleaned = cleaned.replace(
-                "```json",
-                "",
-                1,
-            )
-
-            cleaned = cleaned.replace(
-                "```",
-                "",
-                1,
-            )
-
+            cleaned = cleaned.replace("```json", "", 1)
+            cleaned = cleaned.replace("```", "", 1)
             cleaned = cleaned.strip()
 
         try:
-
             data = json.loads(cleaned)
 
-        except json.JSONDecodeError as exc:
+        except json.JSONDecodeError:
+            start = cleaned.find("{")
+            end = cleaned.rfind("}")
 
-            logger.error(
-                "LLM returned invalid JSON: %s",
-                response,
-            )
-
-            raise LLMClientError(
-                "LLM returned invalid JSON."
-            ) from exc
+            if start != -1 and end != -1 and end > start:
+                try:
+                    data = json.loads(cleaned[start:end + 1])
+                except json.JSONDecodeError as exc:
+                    logger.error(
+                        "LLM returned invalid JSON: %s",
+                        response,
+                    )
+                    raise LLMClientError(
+                        "LLM returned invalid JSON."
+                    ) from exc
+            else:
+                logger.error(
+                    "LLM returned invalid JSON: %s",
+                    response,
+                )
+                raise LLMClientError(
+                    "LLM returned invalid JSON."
+                )
 
         if not isinstance(data, dict):
-
             raise LLMClientError(
                 "LLM JSON response must be an object."
             )
 
         return data
-
 
 llm_client = LLMClient()
