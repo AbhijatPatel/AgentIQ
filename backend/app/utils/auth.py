@@ -1,39 +1,25 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import bcrypt
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from jose import JWTError, jwt
 
+from app.config.settings import settings
 
-SECRET_KEY = "change-this-secret-key-in-production"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+password_hasher = PasswordHasher()
 
 
 def hash_password(password: str) -> str:
-    password_bytes = password.encode("utf-8")
-
-    if len(password_bytes) > 72:
-        raise ValueError("Password cannot be longer than 72 bytes")
-
-    hashed = bcrypt.hashpw(
-        password_bytes,
-        bcrypt.gensalt(),
-    )
-
-    return hashed.decode("utf-8")
+    return password_hasher.hash(password)
 
 
-def verify_password(password: str, password_hash: str) -> bool:
-    password_bytes = password.encode("utf-8")
-
-    if len(password_bytes) > 72:
+def verify_password(password: str, hashed_password: str) -> bool:
+    try:
+        return password_hasher.verify(hashed_password, password)
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
         return False
-
-    return bcrypt.checkpw(
-        password_bytes,
-        password_hash.encode("utf-8"),
-    )
 
 
 def create_access_token(
@@ -46,15 +32,15 @@ def create_access_token(
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(
-            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+            minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
         )
 
     to_encode.update({"exp": expire})
 
     return jwt.encode(
         to_encode,
-        SECRET_KEY,
-        algorithm=ALGORITHM,
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
     )
 
 
@@ -62,8 +48,8 @@ def decode_access_token(token: str) -> Optional[dict]:
     try:
         payload = jwt.decode(
             token,
-            SECRET_KEY,
-            algorithms=[ALGORITHM],
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
         )
         return payload
     except JWTError:
