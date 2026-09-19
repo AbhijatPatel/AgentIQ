@@ -37,11 +37,15 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-RAG_TOP_K = 4
-WEB_MAX_RESULTS = 4
+RAG_TOP_K = 3
+WEB_MAX_RESULTS = 3
 IMAGE_MAX_RESULTS = 4
 VIDEO_MAX_RESULTS = 3
+
 MAX_PARALLEL_RESEARCH_TASKS = 4
+
+# Keep LLM prompts small enough to avoid provider token limits.
+MAX_RAW_MATERIAL_CHARS = 12000
 
 research_cache = ResearchCache(ttl_seconds=3600)
 
@@ -318,10 +322,18 @@ def run_researcher(
         return [], images, videos
 
     raw_material = _format_raw_material(
-        rag_results,
-        web_results,
+    rag_results,
+    web_results,
+)
+
+    if len(raw_material) > MAX_RAW_MATERIAL_CHARS:
+     logger.warning(
+        f"Researcher raw material exceeds limit for task {task.id}. "
+        f"Truncating from {len(raw_material)} to "
+        f"{MAX_RAW_MATERIAL_CHARS} characters."
     )
 
+    raw_material = raw_material[:MAX_RAW_MATERIAL_CHARS]
     logger.info(
         f"Researcher raw material size for task {task.id}: "
         f"{len(raw_material)} characters"

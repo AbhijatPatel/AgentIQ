@@ -1,92 +1,157 @@
-"""
-Tests for the centralized LLM client.
+from unittest.mock import MagicMock
 
-These tests do NOT call the real OpenAI API (that would cost money and
-be flaky in CI). Instead, we mock the OpenAI client so we can verify
-our error-handling and JSON-parsing logic works correctly.
-"""
+from openai import RateLimitError
 
-from unittest.mock import MagicMock, patch
-
-import pytest
-
-from app.llm.client import LLMClient, LLMClientError
+from app.llm.client import LLMClient
 
 
-def _make_mock_response(content: str):
-    """Helper to build a fake OpenAI response object."""
-    mock_message = MagicMock()
-    mock_message.content = content
+def create_rate_limit_error(message: str) -> RateLimitError:
+    """
+    Create a mock OpenAI rate-limit error.
+    """
 
-    mock_choice = MagicMock()
-    mock_choice.message = mock_message
+    response = MagicMock()
 
-    mock_response = MagicMock()
-    mock_response.choices = [mock_choice]
-    return mock_response
+    response.status_code = 429
 
+    response.headers = {}
 
-@patch("app.llm.client.OpenAI")
-def test_generate_returns_text(mock_openai_class):
-    mock_client_instance = MagicMock()
-    mock_client_instance.chat.completions.create.return_value = _make_mock_response(
-        "Hello, world!"
+    return RateLimitError(
+        message,
+        response=response,
+        body={
+            "error": {
+                "message": message,
+            }
+        },
     )
-    mock_openai_class.return_value = mock_client_instance
-
-    client = LLMClient()
-    result = client.generate("Say hello")
-
-    assert result == "Hello, world!"
 
 
-@patch("app.llm.client.OpenAI")
-def test_generate_json_parses_valid_json(mock_openai_class):
-    mock_client_instance = MagicMock()
-    mock_client_instance.chat.completions.create.return_value = _make_mock_response(
-        '{"greeting": "hello"}'
+def create_success_response(content: str):
+    """
+    Create a mock successful OpenAI response.
+    """
+
+    return MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content=content
+                )
+            )
+        ]
     )
-    mock_openai_class.return_value = mock_client_instance
+
+
+def test_daily_token_limit_switches_to_fallback():
+    """
+    Verify that a daily token quota error on the primary
+    model immediately switches to the fallback model.
+    """
 
     client = LLMClient()
-    result = client.generate_json("Return a greeting")
 
-    assert result == {"greeting": "hello"}
+    primary_model = "primary-model"
+    fallback_model = "fallback-model"
 
+    client._model = primary_model
+    client._fallback_model = fallback_model
 
-@patch("app.llm.client.OpenAI")
-def test_generate_json_strips_markdown_fences(mock_openai_class):
-    mock_client_instance = MagicMock()
-    mock_client_instance.chat.completions.create.return_value = _make_mock_response(
-        '```json\n{"greeting": "hello"}\n```'
+    mock_create = MagicMock(
+        side_effect=[
+            create_rate_limit_error(
+                "tokens per day (TPD): "
+                "Limit 200000, "
+                "Used 199128, "
+                "Requested 1565."
+            ),
+            create_success_response(
+                "FALLBACK_SUCCESS"
+            ),
+        ]
     )
-    mock_openai_class.return_value = mock_client_instance
 
-    client = LLMClient()
-    result = client.generate_json("Return a greeting")
+    client._client.chat.completions.create = mock_create
 
-    assert result == {"greeting": "hello"}
-
-
-@patch("app.llm.client.OpenAI")
-def test_generate_json_raises_on_invalid_json(mock_openai_class):
-    mock_client_instance = MagicMock()
-    mock_client_instance.chat.completions.create.return_value = _make_mock_response(
-        "this is not json"
+    result = client.generate(
+        prompt="Reply with exactly: FALLBACK_SUCCESS"
     )
-    mock_openai_class.return_value = mock_client_instance
+
+    assert result == "FALLBACK_SUCCESS"
+
+    assert mock_create.call_count == 2
+
+    first_call = mock_create.call_args_list[0]
+    second_call = mock_create.call_args_list[1]
+
+    assert first_call.kwargs["model"] == primary_model
+
+    assert second_call.kwargs["model"] == fallback_model
+
+
+def test_fallback_model_can_generate_successfully():
+    """
+    Verify that an explicitly selected fallback model
+    can return a successful response.
+    """
 
     client = LLMClient()
-    with pytest.raises(LLMClientError):
-        client.generate_json("Return a greeting")
+
+    fallback_model = "fallback-model"
+
+    client._model = "primary-model"
+    client._fallback_model = fallback_model
+
+    mock_create = MagicMock(
+        return_value=create_success_response(
+            "DIRECT_FALLBACK_SUCCESS"
+        )
+    )
+
+    client._client.chat.completions.create = mock_create
+
+    result = client.generate(
+        prompt="Reply with exactly: DIRECT_FALLBACK_SUCCESS",
+        model=fallback_model,
+    )
+
+    assert result == "DIRECT_FALLBACK_SUCCESS"
+
+    assert mock_create.call_count == 1
+
+    assert (
+        mock_create.call_args.kwargs["model"]
+        == fallback_model
+    )
 
 
-@patch("app.llm.client.OpenAI")
-def test_generate_raises_on_empty_response(mock_openai_class):
-    mock_client_instance = MagicMock()
-    mock_client_instance.chat.completions.create.return_value = _make_mock_response(None)
-    mock_openai_class.return_value = mock_client_instance
+def test_daily_token_limit_detection():
+    """
+    Verify that daily token quota errors are detected correctly.
+    """
 
     client = LLMClient()
-    with pytest.raises(LLMClientError):
-        client.generate("Say hello")
+
+    error = create_rate_limit_error(
+        "tokens per day (TPD): "
+        "Limit 200000, "
+        "Used 199128, "
+        "Requested 1565."
+    )
+
+    assert client._is_daily_token_limit(error) is True
+
+
+def test_normal_rate_limit_is_not_daily_quota():
+    """
+    Verify that a normal temporary rate limit is not treated
+    as a daily token quota error.
+    """
+
+    client = LLMClient()
+
+    error = create_rate_limit_error(
+        "Rate limit reached. Please try again later."
+    )
+
+    assert client._is_daily_token_limit(error) is False
