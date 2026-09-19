@@ -71,4 +71,14 @@ def register_error_handlers(app: FastAPI) -> None:
         else:
             logger.warning(f"Handled error on {request.url.path}: {exc}")
 
-        return _error_response(status_code, error_code, message, detail=str(exc))
+        if status_code >= 500:
+          safe_detail = "Internal server error."
+        else:
+          safe_detail = str(exc)
+
+        return _error_response(
+    status_code,
+    error_code,
+    message,
+    detail=safe_detail,
+)
