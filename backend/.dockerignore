@@ -1,9 +1,9 @@
 venv/
 __pycache__/
 *.pyc
-.env
-data/processed/*
-!data/processed/.gitkeep
-tests/
 .pytest_cache/
-run_tests.ps1
+.env
+.git/
+.gitignore
+tests/
+*.log

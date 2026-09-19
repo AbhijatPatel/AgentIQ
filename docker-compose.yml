@@ -1,58 +1,53 @@
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
     container_name: agentiq-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentiq123}
       POSTGRES_DB: agentiq
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    volumes:
-      - agentiq_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agentiq"]
+      interval: 10s
       timeout: 5s
       retries: 5
 
   backend:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.backend
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: agentiq-backend
-    depends_on:
-      postgres:
-        condition: service_healthy
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
     environment:
       ENVIRONMENT: production
       DEBUG: "False"
       HOST: 0.0.0.0
       PORT: 8000
-      FRONTEND_ORIGIN: http://localhost:5173
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.groq.com/openai/v1}
-      LLM_MODEL: ${LLM_MODEL:-openai/gpt-oss-120b}
-      LLM_TIMEOUT_SECONDS: 60
-      LLM_MAX_RETRIES: 2
-      LLM_TEMPERATURE: 0.2
-      TAVILY_API_KEY: ${TAVILY_API_KEY}
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-agentiq123}@postgres:5432/agentiq
+      FRONTEND_ORIGIN: http://localhost
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/agentiq
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "8000:8000"
-    volumes:
-      - agentiq_data:/app/data
 
   frontend:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.frontend
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: agentiq-frontend
+    restart: unless-stopped
     depends_on:
       - backend
     ports:
-      - "5173:5173"
+      - "80:80"
 
 volumes:
-  agentiq_pgdata:
-  agentiq_data:
+  postgres_data:
