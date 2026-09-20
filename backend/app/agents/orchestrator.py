@@ -45,9 +45,12 @@ def _revise_draft(
     LLM directly with the revision-specific prompt, then applying the
     same parsing rules.
     """
-    from app.agents.writer import REQUIRED_SECTIONS, _parse_references, _sources_to_pydantic
+    from app.agents.writer import REQUIRED_SECTIONS, _parse_references, _sources_to_pydantic, select_evidence_for_writer
 
     tasks_dicts = [{"description": t.description} for t in tasks]
+
+    # Trim evidence for the revision prompt, same as the initial draft.
+    prompt_evidence = select_evidence_for_writer(evidence)
     evidence_dicts = [
         {
             "claim": e.claim,
@@ -55,7 +58,7 @@ def _revise_draft(
             "type": e.type.value,
             "confidence": e.confidence.value,
         }
-        for e in evidence
+        for e in prompt_evidence
     ]
 
     source_objects = _sources_to_pydantic(sources or [])

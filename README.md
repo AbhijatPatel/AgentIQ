@@ -238,8 +238,6 @@ AgentIQ is designed to be deployed using Vercel (Frontend) and Render (Backend):
 
 ### Infrastructure
 
-* Docker
-* Docker Compose
 * PostgreSQL
 * Nginx
 * WSL2
@@ -271,8 +269,6 @@ AgentIQ/
 │   │   └── utils/
 │   │
 │   ├── tests/
-│   ├── Dockerfile
-│   ├── .dockerignore
 │   └── requirements.txt
 │
 ├── frontend/
@@ -287,12 +283,8 @@ AgentIQ/
 │   │   ├── index.css
 │   │   └── main.jsx
 │   │
-│   ├── Dockerfile
-│   └── .dockerignore
 │
 ├── data/
-├── docker/
-├── docker-compose.yml
 └── README.md
 ```
 
@@ -442,7 +434,6 @@ AgentIQ is configured for seamless deployment to modern cloud platforms.
 3. Add the `VITE_API_URL` environment variable pointing to your Render backend URL (e.g., `https://agentiq-backend.onrender.com/api`).
 4. Deploy!
 
-*(Note: Docker configuration files like `Dockerfile` and `docker-compose.yml` are retained in the repository for local development convenience).*
 
 ---
 
@@ -466,7 +457,6 @@ Additional validation includes:
 
 * Backend regression testing
 * Frontend production build
-* Docker container validation
 * PostgreSQL health verification
 * Backend health endpoint verification
 * Frontend HTTP verification
@@ -492,7 +482,6 @@ Security-related functionality includes:
 * Prompt injection protection
 * Authentication middleware
 * Protected API endpoints
-* Docker environment separation
 * Production configuration
 * Error handling without exposing sensitive information
 

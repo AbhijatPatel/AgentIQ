@@ -4,7 +4,6 @@
 
 AgentIQ is an autonomous multi-agent research and task-assistance platform that transforms a user-provided research goal into a structured, evidence-supported final report.
 
-The system combines multi-agent orchestration, large language models, Retrieval-Augmented Generation (RAG), web research, image and video search, parallel execution, caching, evidence-quality analysis, deduplication, retry and recovery, authentication, security controls, a FastAPI backend, a React frontend, PostgreSQL, and Docker deployment.
 
 ```text
 User Goal
@@ -183,11 +182,8 @@ frontend/src/
 `-- main.jsx
 ```
 
-PostgreSQL provides persistent application data through the database layer and SQLAlchemy. Docker Compose provides the database with a persistent volume and readiness health check.
 
-## 11. Docker Deployment
 
-AgentIQ uses Docker Compose with three services:
 
 ```text
 Frontend (Nginx, :80)
@@ -211,7 +207,6 @@ Configure Environment -> Build Images -> Start Compose
 
 ## 12. Production Readiness
 
-Production-oriented improvements include environment configuration, Docker deployment, health monitoring, secure password hashing, JWT authentication, input protection, retry mechanisms, structured errors, API optimization, frontend production builds, and service health verification.
 
 ## 13. Testing and Verification
 
@@ -222,7 +217,6 @@ Final verification results:
 ```text
 Backend regression       -> 216 tests passed
 Frontend production build -> Successful
-Docker services          -> Running
 PostgreSQL               -> Healthy
 Backend health           -> HTTP 200, {"status":"ok"}
 Frontend health          -> HTTP 200
@@ -246,27 +240,20 @@ AgentIQ/
 |   |   |-- tools/
 |   |   `-- utils/
 |   |-- tests/
-|   |-- Dockerfile
 |   |-- requirements.txt
-|   `-- .dockerignore
 |-- frontend/
 |   |-- src/
-|   |-- Dockerfile
-|   `-- .dockerignore
 |-- data/
 |-- docs/
 |   |-- ARCHITECTURE.md
 |   `-- FINAL_PROJECT_REPORT.md
-|-- docker-compose.yml
 |-- README.md
 `-- pytest.ini
 ```
 
 ## 15. Development Progress
 
-AgentIQ was developed incrementally through 41 major modules covering foundation, agent architecture, research, RAG, web and multimedia search, parallelism, caching, performance, retries, quality analysis, security, authentication, integration, production readiness, Docker deployment, and documentation.
 
-Key technical capabilities include multi-agent research, planning, parallel tasks, RAG, vector retrieval, web and multimedia search, evidence processing, deduplication, quality analysis, caching, retry and recovery, LLM fallback handling, JWT authentication, prompt security, SSE events, PostgreSQL persistence, Docker deployment, and automated testing.
 
 ## 16. Future Enhancements
 
@@ -292,7 +279,6 @@ Security and authentication [x]
 API and frontend            [x]
 LLM resilience              [x]
 Production readiness       [x]
-Docker deployment           [x]
 Automated testing           [x]
 README documentation        [x]
 Architecture documentation  [x]
@@ -301,7 +287,6 @@ Final project report       [x]
 
 ## 18. Conclusion
 
-AgentIQ demonstrates how multi-agent orchestration, RAG, web research, multimedia search, evidence processing, LLMs, authentication, security, caching, parallel execution, automated testing, and Docker deployment can be combined into a reliable, modular, deployable full-stack AI application.
 
 The development process emphasized incremental implementation, continuous verification, performance improvements, and production-oriented engineering rather than a simple LLM chatbot.
 

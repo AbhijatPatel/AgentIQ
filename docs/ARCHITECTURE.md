@@ -20,7 +20,6 @@ The platform combines:
 - React frontend
 - FastAPI backend
 - PostgreSQL
-- Docker deployment
 
 The overall workflow is:
 
@@ -296,7 +295,6 @@ PostgreSQL provides persistent application storage through SQLAlchemy:
 FastAPI -> Database Layer -> SQLAlchemy -> PostgreSQL
 ```
 
-Docker Compose provides PostgreSQL as a dedicated service with a persistent Docker volume so container restarts do not automatically remove stored database data.
 
 ## 14. API Architecture
 
@@ -344,12 +342,9 @@ Backend Research Process -> SSE Stream -> React Frontend -> Live Progress UI
 13. The final report is stored or returned.
 14. The React dashboard displays the result.
 
-## 17. Docker Architecture
 
-AgentIQ uses Docker Compose for a production-style local deployment:
 
 ```text
-Docker Compose
   |-- postgres   PostgreSQL 16 with persistent volume
   |-- backend    FastAPI and Uvicorn on port 8000
   `-- frontend   React build served on port 80
@@ -364,7 +359,6 @@ Useful verification commands from the repository root are:
 ```powershell
 python -m pytest -q
 npm --prefix frontend run build
-docker compose ps
 Invoke-WebRequest http://localhost:8000/api/health
 Invoke-WebRequest http://localhost
 git diff --check

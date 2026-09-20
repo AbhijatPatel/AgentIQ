@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, UploadFile, Depends
+from app.api.dependencies import get_current_user
 
 from app.rag.loader import DocumentLoadError, load_document
 from app.rag.splitter import split_documents
@@ -29,7 +30,10 @@ ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf", ".csv", ".png", ".jpg", ".jpeg", ".
 
 
 @router.post("/documents/upload", response_model=DocumentUploadResponse)
-async def upload_document(file: UploadFile):
+async def upload_document(
+    file: UploadFile,
+    current_user=Depends(get_current_user),
+):
     """
     Upload a document, save it, and add it to the RAG vector store.
     """

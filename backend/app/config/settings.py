@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     LLM_MAX_OUTPUT_TOKENS: int = 1024
     LLM_JSON_MAX_OUTPUT_TOKENS: int = 8192
 
+    # Maximum number of evidence items passed to the Writer prompt.
+    # This prevents HTTP 413 (request too large) on the small fallback model
+    # (openai/gpt-oss-20b, 8 000 TPM limit). Evidence is ranked by confidence
+    # (high → medium → low) so the highest-quality items are always kept.
+    # Override with MAX_EVIDENCE_FOR_WRITER=N in your .env file.
+    MAX_EVIDENCE_FOR_WRITER: int = 20
+
     JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
