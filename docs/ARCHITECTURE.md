@@ -364,4 +364,4 @@ Invoke-WebRequest http://localhost
 git diff --check
 ```
 
-These checks validate backend behavior, frontend compilation, container state, HTTP availability, and whitespace errors before deployment changes are committed.
+These checks validate backend behavior, frontend compilation, service state, HTTP availability, and whitespace errors before deployment changes are committed.

@@ -36,7 +36,7 @@ Project objectives include:
 - Improve quality through deduplication and analysis.
 - Cache reusable results and recover from temporary failures.
 - Protect inputs and provide authenticated API access.
-- Deliver a modern web interface and containerized deployment.
+- Deliver a modern web interface and cloud deployment on Vercel and Render.
 - Maintain reliable testing and production-oriented configuration.
 
 ## 3. System Architecture
