@@ -27,12 +27,14 @@ class ResearchSessionModel(Base):
     research_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_goal: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="running")
+    user_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     tasks: Mapped[list] = mapped_column(JSON, default=list)
     evidence_count: Mapped[int] = mapped_column(Integer, default=0)
     evidence: Mapped[list] = mapped_column(JSON, default=list)
     images: Mapped[list] = mapped_column(JSON, default=list)
     videos: Mapped[list] = mapped_column(JSON, default=list)
+    sources: Mapped[list] = mapped_column(JSON, default=list)
     revision_count: Mapped[int] = mapped_column(Integer, default=0)
     final_report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     critique: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -79,3 +81,17 @@ class UserModel(Base):
         DateTime,
         default=lambda: datetime.now(timezone.utc),
     )
+
+
+class OtpChallengeModel(Base):
+    __tablename__ = "otp_challenges"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    used: Mapped[bool] = mapped_column(default=False)

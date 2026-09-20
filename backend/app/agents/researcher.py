@@ -25,6 +25,10 @@ from app.tools.web_search import (
     video_search,
     WebSearchError,
 )
+from app.tools.youtube_search import (
+    youtube_search,
+    YouTubeSearchError,
+)
 from app.utils.validators import sanitize_retrieved_content
 from app.utils.cache import ResearchCache
 from app.utils.deduplication import (
@@ -41,6 +45,7 @@ RAG_TOP_K = 3
 WEB_MAX_RESULTS = 3
 IMAGE_MAX_RESULTS = 4
 VIDEO_MAX_RESULTS = 3
+YOUTUBE_MAX_RESULTS = 4
 
 MAX_PARALLEL_RESEARCH_TASKS = 4
 
@@ -130,14 +135,47 @@ def _run_rag(task: Task) -> tuple[list[dict], float]:
     return results, elapsed
 
 
+def _clean_query_for_media(text: str) -> str:
+    """
+    Extract clean keywords from multilingual/conversational task descriptions
+    so that visual media search engines (Pexels and stock image engines) return optimal results.
+    """
+    if not text:
+        return ""
+
+    # Common conversational / question stop-words across English, Hinglish, Spanish, etc.
+    stop_words = {
+        "ka", "ki", "ke", "ko", "se", "me", "mein", "par", "kahan", "kyun", "kaise",
+        "kya", "hai", "hain", "tha", "the", "thi", "hoga", "hogi", "hote", "hota",
+        "hoti", "liye", "aur", "ya", "bhi", "toh", "exact", "exactly", "use", "kare",
+        "karna", "karein", "de", "do", "karo", "please", "batao", "bataye", "bataiye",
+        "investigate", "overview", "study", "research", "what", "is", "are", "how",
+        "why", "where", "when", "the", "a", "an", "in", "on", "at", "for", "de",
+        "la", "el", "los", "las", "un", "una", "en", "por", "para", "como", "que"
+    }
+
+    words = text.split()
+    filtered = [w for w in words if w.lower().strip("?,.!;:\"'()[]{}") not in stop_words]
+    cleaned = " ".join(filtered).strip("?,.!;:\"'()[]{} ")
+
+    return cleaned if len(cleaned) >= 3 else text
+
+
 def _run_image_search(task: Task) -> tuple[list[dict], float]:
     start = time.perf_counter()
 
     try:
+        # First try full task description
         results = image_search(
             task.description,
             max_results=IMAGE_MAX_RESULTS,
         )
+        # If no results and query has conversational/multilingual terms, retry with cleaned keywords
+        if not results:
+            cleaned = _clean_query_for_media(task.description)
+            if cleaned != task.description:
+                logger.info(f"Retrying image search with cleaned keywords: {cleaned!r}")
+                results = image_search(cleaned, max_results=IMAGE_MAX_RESULTS)
     except WebSearchError as exc:
         logger.warning(
             f"Image search failed for task {task.id}: {exc}"
@@ -155,24 +193,43 @@ def _run_image_search(task: Task) -> tuple[list[dict], float]:
 
 
 def _run_video_search(task: Task) -> tuple[list[dict], float]:
+    """Fetch videos from both YouTube and Pexels, merging the results."""
     start = time.perf_counter()
 
+    # --- YouTube (supports all languages natively, no API key needed) ---
+    youtube_results: list[dict] = []
     try:
-        results = video_search(
+        youtube_results = youtube_search(
             task.description,
+            max_results=YOUTUBE_MAX_RESULTS,
+        )
+    except YouTubeSearchError as exc:
+        logger.warning(
+            f"YouTube search failed for task {task.id}: {exc}"
+        )
+
+    # --- Pexels (supplemental stock footage; cleaned keywords work best) ---
+    pexels_results: list[dict] = []
+    try:
+        pexels_query = _clean_query_for_media(task.description)
+        pexels_results = video_search(
+            pexels_query,
             max_results=VIDEO_MAX_RESULTS,
         )
     except WebSearchError as exc:
         logger.warning(
-            f"Video search failed for task {task.id}: {exc}"
+            f"Pexels video search failed for task {task.id}: {exc}"
         )
-        results = []
+
+    # Merge: YouTube first, then Pexels
+    results = youtube_results + pexels_results
 
     elapsed = time.perf_counter() - start
 
     logger.info(
         f"Video search completed for task {task.id} "
-        f"in {elapsed:.2f}s with {len(results)} results"
+        f"in {elapsed:.2f}s with {len(results)} results "
+        f"(YouTube: {len(youtube_results)}, Pexels: {len(pexels_results)})"
     )
 
     return results, elapsed
@@ -204,7 +261,7 @@ def _run_web_search(task: Task) -> tuple[list[dict], float]:
 
 def run_researcher(
     task: Task,
-) -> tuple[list[Evidence], list[dict], list[dict]]:
+) -> tuple[list[Evidence], list[dict], list[dict], list[dict]]:
     total_start = time.perf_counter()
 
     logger.info(
@@ -319,7 +376,7 @@ def run_researcher(
             f"Total time: {total_time:.2f}s"
         )
 
-        return [], images, videos
+        return [], images, videos, web_results
 
     raw_material = _format_raw_material(
     rag_results,
@@ -472,6 +529,7 @@ def run_researcher(
         evidence_list,
         images,
         videos,
+        web_results,
     )
 
     research_cache.set(

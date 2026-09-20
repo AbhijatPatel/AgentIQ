@@ -86,7 +86,7 @@ def test_run_researcher_returns_evidence(
         "gaps": [],
     }
 
-    evidence, images, videos = run_researcher(_make_task())
+    evidence, images, videos, web_results = run_researcher(_make_task())
 
     assert len(evidence) == 1
     assert evidence[0].claim == "AI adoption grew 40% in 2026"
@@ -112,7 +112,7 @@ def test_run_researcher_returns_empty_when_no_material_found(
     mock_image_search.return_value = []
     mock_video_search.return_value = []
 
-    evidence, images, videos = run_researcher(_make_task())
+    evidence, images, videos, web_results = run_researcher(_make_task())
 
     assert evidence == []
     assert images == []
@@ -157,7 +157,7 @@ def test_run_researcher_continues_when_web_search_fails(
         "gaps": [],
     }
 
-    evidence, images, videos = run_researcher(
+    evidence, images, videos, web_results = run_researcher(
         _make_task()
     )
 
@@ -234,7 +234,7 @@ def test_run_researcher_skips_malformed_evidence(
         "gaps": [],
     }
 
-    evidence, images, videos = run_researcher(
+    evidence, images, videos, web_results = run_researcher(
         _make_task()
     )
 
@@ -277,7 +277,7 @@ def test_run_researcher_defaults_unknown_type_to_assumption(
         "gaps": [],
     }
 
-    evidence, images, videos = run_researcher(
+    evidence, images, videos, web_results = run_researcher(
         _make_task()
     )
 
@@ -327,7 +327,7 @@ def test_run_researcher_returns_images(
         "gaps": [],
     }
 
-    evidence, images, videos = run_researcher(
+    evidence, images, videos, web_results = run_researcher(
         _make_task()
     )
 
@@ -383,7 +383,7 @@ def test_run_researcher_returns_videos(
         "gaps": [],
     }
 
-    evidence, images, videos = run_researcher(
+    evidence, images, videos, web_results = run_researcher(
         _make_task()
     )
 

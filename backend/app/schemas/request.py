@@ -12,11 +12,11 @@ class ResearchRequest(BaseModel):
     """Body for POST /api/research."""
 
     goal: str = Field(
-    ...,
-    min_length=5,
-    max_length=1000,
-    description="The high-level research goal to investigate.",
-    examples=[
-        "Impact of generative AI on developer productivity"
-    ],
-)
+        ...,
+        min_length=5,
+        max_length=2000,
+        description="The high-level research goal to investigate.",
+        examples=[
+            "Impact of generative AI on developer productivity"
+        ],
+    )

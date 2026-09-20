@@ -139,6 +139,7 @@ class LLMClient:
         system: Optional[str] = None,
         temperature: Optional[float] = None,
         model: Optional[str] = None,
+        response_format: Optional[dict[str, str]] = None,
     ) -> str:
         """
         Generate a text response from the LLM.
@@ -200,18 +201,29 @@ class LLMClient:
                             settings.LLM_MIN_REQUEST_DELAY_SECONDS
                         )
 
+                        request_kwargs = {
+                            "model": current_model,
+                            "messages": messages,
+                            "temperature": (
+                                temperature
+                                if temperature is not None
+                                else self._temperature
+                            ),
+                            "max_tokens": (
+                                settings.LLM_JSON_MAX_OUTPUT_TOKENS
+                                if response_format is not None
+                                else settings.LLM_MAX_OUTPUT_TOKENS
+                            ),
+                        }
+
+                        if response_format is not None:
+                            request_kwargs["response_format"] = (
+                                response_format
+                            )
+
                         response = (
                             self._client.chat.completions.create(
-                                model=current_model,
-                                messages=messages,
-                                temperature=(
-                                    temperature
-                                    if temperature is not None
-                                    else self._temperature
-                                ),
-                                max_tokens=(
-                                    settings.LLM_MAX_OUTPUT_TOKENS
-                                ),
+                                **request_kwargs
                             )
                         )
 
@@ -407,46 +419,71 @@ User request:
             system=system,
             temperature=temperature,
             model=model,
+            response_format={"type": "json_object"},
         )
 
-        cleaned = response.strip()
+        def parse_response(raw_response: str) -> dict[str, Any]:
+            cleaned = raw_response.strip()
 
-        if cleaned.startswith("```"):
-            cleaned = cleaned.replace("```json", "", 1)
-            cleaned = cleaned.replace("```", "", 1)
-            cleaned = cleaned.strip()
+            if cleaned.startswith("```"):
+                cleaned = cleaned.replace("```json", "", 1)
+                cleaned = cleaned.replace("```", "", 1)
+                cleaned = cleaned.strip()
+
+            try:
+                parsed = json.loads(cleaned)
+            except json.JSONDecodeError:
+                start = cleaned.find("{")
+                end = cleaned.rfind("}")
+
+                if start == -1 or end == -1 or end <= start:
+                    raise
+
+                parsed = json.loads(cleaned[start:end + 1])
+
+            if not isinstance(parsed, dict):
+                raise LLMClientError(
+                    "LLM JSON response must be an object."
+                )
+
+            return parsed
 
         try:
-            data = json.loads(cleaned)
+            data = parse_response(response)
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "LLM returned invalid JSON; requesting one corrected response."
+            )
 
-        except json.JSONDecodeError:
-            start = cleaned.find("{")
-            end = cleaned.rfind("}")
+            repair_prompt = f"""
+The previous response was not valid JSON. Return ONLY a corrected JSON object
+that satisfies the original request. Do not include Markdown, explanations,
+or extra text.
 
-            if start != -1 and end != -1 and end > start:
-                try:
-                    data = json.loads(cleaned[start:end + 1])
-                except json.JSONDecodeError as exc:
-                    logger.error(
-                        "LLM returned invalid JSON: %s",
-                        response,
-                    )
-                    raise LLMClientError(
-                        "LLM returned invalid JSON."
-                    ) from exc
-            else:
+Original request:
+{prompt}
+
+Previous response:
+{response}
+""".strip()
+
+            try:
+                repaired_response = self.generate(
+                    prompt=repair_prompt,
+                    system=system,
+                    temperature=temperature,
+                    model=model,
+                    response_format={"type": "json_object"},
+                )
+                data = parse_response(repaired_response)
+            except (LLMClientError, json.JSONDecodeError) as repair_exc:
                 logger.error(
                     "LLM returned invalid JSON: %s",
                     response,
                 )
                 raise LLMClientError(
                     "LLM returned invalid JSON."
-                )
-
-        if not isinstance(data, dict):
-            raise LLMClientError(
-                "LLM JSON response must be an object."
-            )
+                ) from repair_exc
 
         return data
 

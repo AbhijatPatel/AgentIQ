@@ -12,11 +12,14 @@ be tested in isolation before Module 12 wraps it into the full graph.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from app.agents.critic import run_critic, CriticError
 from app.agents.writer import run_writer, WriterError
-from app.graph.state import CriticStatus, DraftReport, Evidence, Task, MAX_REVISIONS
+from app.graph.state import CriticStatus, DraftReport, Evidence, Source, Task, MAX_REVISIONS
 from app.llm.client import llm_client, LLMClientError
 from app.llm.prompts import WRITER_SYSTEM_PROMPT, writer_revision_prompt
+from app.utils.citation_engine import format_source_catalog_for_prompt
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -33,6 +36,7 @@ def _revise_draft(
     previous_draft: DraftReport,
     issues: list[str],
     suggestions: list[str],
+    sources: Optional[list] = None,
 ) -> DraftReport:
     """
     Run one revision pass of the Writer, informed by Critic feedback.
@@ -41,7 +45,7 @@ def _revise_draft(
     LLM directly with the revision-specific prompt, then applying the
     same parsing rules.
     """
-    from app.agents.writer import REQUIRED_SECTIONS, _parse_references
+    from app.agents.writer import REQUIRED_SECTIONS, _parse_references, _sources_to_pydantic
 
     tasks_dicts = [{"description": t.description} for t in tasks]
     evidence_dicts = [
@@ -54,6 +58,9 @@ def _revise_draft(
         for e in evidence
     ]
 
+    source_objects = _sources_to_pydantic(sources or [])
+    source_catalog = format_source_catalog_for_prompt(source_objects) if source_objects else ""
+
     try:
         raw_response = llm_client.generate_json(
             prompt=writer_revision_prompt(
@@ -63,6 +70,7 @@ def _revise_draft(
                 previous_draft=previous_draft.model_dump(),
                 critique_issues=issues,
                 critique_suggestions=suggestions,
+                source_catalog=source_catalog,
             ),
             system=WRITER_SYSTEM_PROMPT,
         )
@@ -73,6 +81,12 @@ def _revise_draft(
     if missing_sections:
         raise WriterError(f"Writer revision missing required sections: {missing_sections}")
 
+    # Use real sources as references when available
+    if source_objects:
+        references = source_objects
+    else:
+        references = _parse_references(raw_response.get("references", []))
+
     return DraftReport(
         title=raw_response["title"],
         executive_summary=raw_response["executive_summary"],
@@ -81,7 +95,7 @@ def _revise_draft(
         analysis=raw_response["analysis"],
         limitations=raw_response["limitations"],
         conclusion=raw_response["conclusion"],
-        references=_parse_references(raw_response.get("references", [])),
+        references=references,
     )
 
 
@@ -89,6 +103,7 @@ def run_revision_loop(
     user_goal: str,
     tasks: list[Task],
     evidence: list[Evidence],
+    sources: Optional[list] = None,
 ) -> dict:
     """
     Run the full Writer -> Critic -> (revise?) loop.
@@ -108,7 +123,7 @@ def run_revision_loop(
     logger.info(f"Revision loop started for goal: {user_goal!r}")
 
     try:
-        draft = run_writer(user_goal, tasks, evidence)
+        draft = run_writer(user_goal, tasks, evidence, sources=sources)
     except WriterError as exc:
         raise RevisionLoopError(f"Could not produce an initial draft: {exc}") from exc
 
@@ -116,7 +131,7 @@ def run_revision_loop(
 
     while True:
         try:
-            critique = run_critic(user_goal, evidence, draft)
+            critique = run_critic(user_goal, evidence, draft, sources=sources)
         except CriticError as exc:
             # If the Critic itself fails, we can't safely judge the draft.
             # Return what we have rather than crashing the whole pipeline.
@@ -155,7 +170,8 @@ def run_revision_loop(
 
         try:
             draft = _revise_draft(
-                user_goal, tasks, evidence, draft, critique.issues, critique.suggestions
+                user_goal, tasks, evidence, draft, critique.issues, critique.suggestions,
+                sources=sources,
             )
         except WriterError as exc:
             # Revision attempt failed - keep the previous draft and stop,

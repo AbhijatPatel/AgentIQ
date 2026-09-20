@@ -61,10 +61,18 @@ class Task(BaseModel):
 
 class Source(BaseModel):
     """A single source used somewhere in the research process."""
-    title: str
+    source_id: str = ""
+    citation: Optional[str] = None
+    citation_num: Optional[int] = None
+    title: str = "Untitled Source"
     url: Optional[str] = None
     domain: Optional[str] = None
+    source_type: str = "web"
+    snippet: Optional[str] = None
     published_date: Optional[str] = None
+    author: Optional[str] = None
+    query: Optional[str] = None
+    metadata: dict = Field(default_factory=dict)
 
 
 class Evidence(BaseModel):
@@ -73,6 +81,8 @@ class Evidence(BaseModel):
     claim: str
     source_title: str
     source_url: Optional[str] = None
+    source_id: Optional[str] = None
+    citation_num: Optional[int] = None
     type: EvidenceType = EvidenceType.EVIDENCE
     confidence: ConfidenceLevel = ConfidenceLevel.MEDIUM
 

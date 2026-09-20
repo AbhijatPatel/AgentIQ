@@ -25,7 +25,7 @@ router = APIRouter()
 
 UPLOAD_DIR = Path("data/documents")
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
-ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf"}
+ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf", ".csv", ".png", ".jpg", ".jpeg", ".webp"}
 
 
 @router.post("/documents/upload", response_model=DocumentUploadResponse)

@@ -11,9 +11,12 @@ invent citations - if evidence is thin, it says so explicitly in the
 
 from __future__ import annotations
 
+from typing import Optional
+
 from app.graph.state import DraftReport, Evidence, Source, Task
 from app.llm.client import llm_client, LLMClientError
 from app.llm.prompts import WRITER_SYSTEM_PROMPT, writer_user_prompt
+from app.utils.citation_engine import format_source_catalog_for_prompt
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -67,7 +70,26 @@ def _parse_references(raw_references: list) -> list[Source]:
     return sources
 
 
-def run_writer(user_goal: str, tasks: list[Task], evidence: list[Evidence]) -> DraftReport:
+def _sources_to_pydantic(sources_data: list) -> list[Source]:
+    """Convert raw source dicts (from state) back into Source objects."""
+    result: list[Source] = []
+    for s in sources_data:
+        if isinstance(s, Source):
+            result.append(s)
+        elif isinstance(s, dict):
+            try:
+                result.append(Source(**s))
+            except Exception:
+                continue
+    return result
+
+
+def run_writer(
+    user_goal: str,
+    tasks: list[Task],
+    evidence: list[Evidence],
+    sources: Optional[list] = None,
+) -> DraftReport:
     """
     Run the Writer agent to produce a draft report.
 
@@ -75,6 +97,7 @@ def run_writer(user_goal: str, tasks: list[Task], evidence: list[Evidence]) -> D
         user_goal: The original high-level user goal.
         tasks: List of Task objects from the Planner.
         evidence: List of Evidence objects from the Researcher.
+        sources: Optional list of Source objects/dicts from the citation engine.
 
     Returns:
         A validated DraftReport.
@@ -90,12 +113,17 @@ def run_writer(user_goal: str, tasks: list[Task], evidence: list[Evidence]) -> D
             "as a limitation rather than inventing content."
         )
 
+    # Build source catalog for the prompt if real sources are available
+    source_objects = _sources_to_pydantic(sources or [])
+    source_catalog = format_source_catalog_for_prompt(source_objects) if source_objects else ""
+
     try:
         raw_response = llm_client.generate_json(
             prompt=writer_user_prompt(
                 user_goal=user_goal,
                 tasks=_tasks_to_dicts(tasks),
                 evidence=_evidence_to_dicts(evidence),
+                source_catalog=source_catalog,
             ),
             system=WRITER_SYSTEM_PROMPT,
         )
@@ -109,7 +137,14 @@ def run_writer(user_goal: str, tasks: list[Task], evidence: list[Evidence]) -> D
             f"Writer response is missing required sections: {missing_sections}"
         )
 
-    references = _parse_references(raw_response.get("references", []))
+    # Use real numbered sources as references when available,
+    # falling back to LLM-generated references otherwise
+    if source_objects:
+        references = source_objects
+        logger.info(f"Writer using {len(references)} real sources as references")
+    else:
+        references = _parse_references(raw_response.get("references", []))
+        logger.info(f"Writer using {len(references)} LLM-generated references (no source catalog)")
 
     draft = DraftReport(
         title=raw_response["title"],

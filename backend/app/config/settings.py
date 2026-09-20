@@ -30,10 +30,20 @@ class Settings(BaseSettings):
     LLM_MIN_REQUEST_DELAY_SECONDS: float = 2.0
     LLM_TEMPERATURE: float = 0.2
     LLM_MAX_OUTPUT_TOKENS: int = 1024
+    LLM_JSON_MAX_OUTPUT_TOKENS: int = 8192
 
     JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+
+    OTP_EXPIRE_MINUTES: int = 10
+    OTP_REQUEST_COOLDOWN_SECONDS: int = 60
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_USE_TLS: bool = True
 
     # Web Search
     TAVILY_API_KEY: str = ""

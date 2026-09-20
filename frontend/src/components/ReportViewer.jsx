@@ -5,12 +5,12 @@ import SourceList from "./SourceList";
 function Section({ title, content }) {
   if (!content) return null;
   return (
-    <div style={{ marginBottom: "1.5rem" }}>
-      <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>{title}</h3>
+    <section className="report-section">
+      <h3 className="report-section-subtitle">{title}</h3>
       <div className="markdown-content">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -77,59 +77,56 @@ export default function ReportViewer({ report, critique }) {
   const handleCopy = async (e) => {
     const button = e.currentTarget;
     const ok = await copyReport(report);
-    const original = button.textContent;
-    button.textContent = ok ? "Copied!" : "Failed to copy";
+    const original = button.innerHTML;
+    button.innerHTML = ok ? "✓ Copied!" : "Failed";
     setTimeout(() => {
-      button.textContent = original;
-    }, 1500);
+      button.innerHTML = original;
+    }, 1800);
   };
 
-    return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: "1rem",
-          marginBottom: "0.5rem",
-        }}
-      >
-                <h2 style={{ margin: 0, fontSize: "1.5rem" }}>{report.title}</h2>
-        <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
-                  <button onClick={handleCopy} className="toolbar-btn" style={toolbarButtonStyle}>
-            Copy
+  return (
+    <div className="report-viewer">
+      <div className="report-heading">
+        <div>
+          <div className="section-kicker">Synthesized Research Output</div>
+          <h2 className="report-title">{report.title}</h2>
+        </div>
+        <div className="report-actions">
+          <button onClick={handleCopy} className="toolbar-btn" title="Copy markdown to clipboard">
+            📋 Copy Report
           </button>
-          <button onClick={() => downloadReport(report)} className="toolbar-btn" style={toolbarButtonStyle}>
-            Download
+          <button onClick={() => downloadReport(report)} className="toolbar-btn" title="Download markdown file">
+            📥 Download .md
           </button>
         </div>
       </div>
 
       {critique && (
-        <p style={{ color: "#6b7280", fontSize: "0.85rem", marginBottom: "1.5rem" }}>
-          Quality score: {critique.score}/10 · Status: {critique.status}
-        </p>
+        <div className="report-meta-row">
+          <span className="report-meta-item">
+            Quality Score: <strong>{critique.score}/10</strong>
+          </span>
+          <span className={`critique-status critique-${critique.status}`}>
+            {critique.status === "pass" ? "✓ Verified Pass" : critique.status}
+          </span>
+          {report.references?.length > 0 && (
+            <span className="report-meta-item">
+              📚 <strong>{report.references.length}</strong> primary references
+            </span>
+          )}
+        </div>
       )}
 
-      <Section title="Executive Summary" content={report.executive_summary} />
-      <Section title="Introduction" content={report.introduction} />
-      <Section title="Findings" content={report.findings} />
-      <Section title="Analysis" content={report.analysis} />
-      <Section title="Limitations" content={report.limitations} />
-      <Section title="Conclusion" content={report.conclusion} />
+      <div className="report-body-container">
+        <Section title="Executive Summary" content={report.executive_summary} />
+        <Section title="Introduction" content={report.introduction} />
+        <Section title="Key Findings & Evidence" content={report.findings} />
+        <Section title="In-Depth Analysis" content={report.analysis} />
+        <Section title="Limitations & Open Questions" content={report.limitations} />
+        <Section title="Conclusion & Strategic Recommendations" content={report.conclusion} />
+      </div>
 
       <SourceList references={report.references} />
     </div>
   );
 }
-
-const toolbarButtonStyle = {
-  padding: "0.4rem 0.9rem",
-  borderRadius: "6px",
-  border: "1px solid #d1d5db",
-  background: "white",
-  cursor: "pointer",
-  fontSize: "0.85rem",
-};
-

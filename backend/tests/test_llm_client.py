@@ -1,8 +1,9 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 from openai import RateLimitError
 
-from app.llm.client import LLMClient
+from app.llm.client import LLMClient, LLMClientError
 
 
 def create_rate_limit_error(message: str) -> RateLimitError:
@@ -155,3 +156,46 @@ def test_normal_rate_limit_is_not_daily_quota():
     )
 
     assert client._is_daily_token_limit(error) is False
+
+
+def test_generate_json_repairs_malformed_response():
+    client = LLMClient()
+
+    with patch.object(
+        client,
+        "generate",
+        side_effect=[
+            "Here is the result: {not valid JSON}",
+            '{"evidence": []}',
+        ],
+    ) as mock_generate:
+        result = client.generate_json("Return evidence")
+
+    assert result == {"evidence": []}
+    assert mock_generate.call_count == 2
+
+
+def test_generate_json_raises_when_repair_fails():
+    client = LLMClient()
+
+    with patch.object(
+        client,
+        "generate",
+        side_effect=["not JSON", "still not JSON"],
+    ):
+        with pytest.raises(LLMClientError, match="invalid JSON"):
+            client.generate_json("Return evidence")
+
+
+def test_generate_json_uses_structured_output_budget():
+    client = LLMClient()
+    mock_create = MagicMock(
+        return_value=create_success_response('{"ok": true}')
+    )
+    client._client.chat.completions.create = mock_create
+
+    assert client.generate_json("Return an object") == {"ok": True}
+
+    request = mock_create.call_args.kwargs
+    assert request["response_format"] == {"type": "json_object"}
+    assert request["max_tokens"] == 8192

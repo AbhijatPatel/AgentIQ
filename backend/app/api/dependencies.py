@@ -13,7 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database.connection import SessionLocal
-from app.database.repository import create_session, get_session, update_session
+from app.database.repository import create_session, delete_session, get_session, list_sessions, update_session
 from app.database.user_repository import get_user_by_id
 from app.utils.auth import decode_access_token
 
@@ -79,6 +79,8 @@ __all__ = [
     "create_session",
     "get_session",
     "update_session",
+    "delete_session",
+    "list_sessions",
     "get_db",
     "get_current_user",
 ]

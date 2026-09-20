@@ -17,7 +17,8 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf"}
+SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf", ".csv", ".png", ".jpg", ".jpeg", ".webp"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 class DocumentLoadError(Exception):
@@ -41,6 +42,11 @@ def _load_pdf(path: Path) -> str:
     return "\n\n".join(pages_text)
 
 
+def _load_image_reference(path: Path) -> str:
+    """Creates a contextual placeholder representation for an uploaded reference image."""
+    return f"[Attached Image Asset: {path.name} | File Size: {path.stat().st_size} bytes | Format: {path.suffix.upper().lstrip('.')}]"
+
+
 def load_document(file_path: str) -> Document:
     """
     Load a single document from disk into a LangChain Document.
@@ -54,14 +60,20 @@ def load_document(file_path: str) -> Document:
     if not path.exists():
         raise DocumentLoadError(f"File not found: {file_path}")
 
-    if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+    ext = path.suffix.lower()
+    if ext not in SUPPORTED_EXTENSIONS:
         raise DocumentLoadError(
             f"Unsupported file type '{path.suffix}'. Supported: {SUPPORTED_EXTENSIONS}"
         )
 
     logger.info(f"Loading document: {path.name}")
 
-    content = _load_pdf(path) if path.suffix.lower() == ".pdf" else _load_text_like(path)
+    if ext == ".pdf":
+        content = _load_pdf(path)
+    elif ext in IMAGE_EXTENSIONS:
+        content = _load_image_reference(path)
+    else:
+        content = _load_text_like(path)
 
     if not content or not content.strip():
         raise DocumentLoadError(f"Document is empty: {file_path}")
@@ -71,7 +83,7 @@ def load_document(file_path: str) -> Document:
         metadata={
             "source": str(path),
             "filename": path.name,
-            "file_type": path.suffix.lower().lstrip("."),
+            "file_type": ext.lstrip("."),
         },
     )
 

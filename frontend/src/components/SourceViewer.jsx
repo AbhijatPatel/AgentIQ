@@ -30,8 +30,7 @@ function groupBySource(evidence) {
   return Object.values(groups);
 }
 
-function SourceCard({ source }) {
-  const [expanded, setExpanded] = useState(false);
+function SourceCard({ source, isExpanded, onToggle }) {
   const domain = extractDomain(source.source_url);
 
   const openSource = () => {
@@ -41,123 +40,51 @@ function SourceCard({ source }) {
   };
 
   return (
-    <div
-      style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: "8px",
-        marginBottom: "0.75rem",
-        overflow: "hidden",
-      }}
-    >
+    <div className={`source-card ${isExpanded ? "source-card--expanded" : ""}`}>
       <button
-        onClick={() => setExpanded((e) => !e)}
-        style={{
-          width: "100%",
-          textAlign: "left",
-          padding: "0.75rem 1rem",
-          background: "#f9fafb",
-          border: "none",
-          cursor: "pointer",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
+        type="button"
+        onClick={onToggle}
+        className="source-card-toggle"
+        aria-expanded={isExpanded}
       >
-        <div>
-          <div style={{ fontWeight: 600 }}>{source.source_title}</div>
+        <div className="source-info">
+          <div className="source-title-row">
+            <span className="source-bullet">🔗</span>
+            <span className="source-title">{source.source_title}</span>
+          </div>
 
-          {domain && (
-            <div
-              style={{
-                fontSize: "0.8rem",
-                color: "#6b7280",
-              }}
-            >
-              {domain}
-            </div>
-          )}
+          {domain && <div className="source-domain">{domain}</div>}
         </div>
 
-        <span
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.75rem",
-          }}
-        >
-          <span
-            style={{
-              fontSize: "0.8rem",
-              color: "#6b7280",
-            }}
-          >
-            {source.claims.length} claim
-            {source.claims.length !== 1 ? "s" : ""}
+        <div className="source-summary">
+          <span className="source-claim-count">
+            {source.claims.length} {source.claims.length === 1 ? "claim" : "claims"}
           </span>
 
-          <span>{expanded ? "-" : "+"}</span>
-        </span>
+          <span className={`source-chevron ${isExpanded ? "source-chevron--open" : ""}`}>
+            ▾
+          </span>
+        </div>
       </button>
 
-      {expanded && (
-        <div
-          style={{
-            padding: "0.75rem 1rem",
-            borderTop: "1px solid #e5e7eb",
-          }}
-        >
+      {isExpanded && (
+        <div className="source-card-body">
           {source.source_url ? (
             <button
+              type="button"
               onClick={openSource}
-              style={{
-                fontSize: "0.85rem",
-                display: "block",
-                marginBottom: "0.5rem",
-                background: "none",
-                border: "none",
-                color: "#2563eb",
-                cursor: "pointer",
-                padding: 0,
-                textDecoration: "underline",
-              }}
+              className="source-link"
             >
-              View original source
+              Visit verified source ↗
             </button>
           ) : null}
 
-          <ul
-            style={{
-              paddingLeft: "1.1rem",
-              margin: 0,
-            }}
-          >
+          <ul className="source-claims">
             {source.claims.map((claim, i) => (
-              <li
-                key={i}
-                style={{
-                  marginBottom: "0.5rem",
-                  fontSize: "0.9rem",
-                }}
-              >
-                {claim.claim}
-
-                <span
-                  style={{
-                    marginLeft: "0.5rem",
-                    fontSize: "0.7rem",
-                    padding: "0.1rem 0.4rem",
-                    borderRadius: "4px",
-                    background:
-                      claim.type === "evidence"
-                        ? "#dcfce7"
-                        : "#fef3c7",
-                    color:
-                      claim.type === "evidence"
-                        ? "#166534"
-                        : "#92400e",
-                  }}
-                >
-                  {claim.type} - {claim.confidence}
+              <li key={i} className="source-claim-item">
+                <span className="claim-text">{claim.claim}</span>
+                <span className={`claim-tag claim-${claim.type || "evidence"}`}>
+                  {claim.type || "fact"} {claim.confidence ? `· ${claim.confidence}` : ""}
                 </span>
               </li>
             ))}
@@ -172,17 +99,58 @@ export default function SourceViewer({ evidence }) {
   if (!evidence || evidence.length === 0) return null;
 
   const sources = groupBySource(evidence);
+  const [expandedMap, setExpandedMap] = useState({});
+  const [expandAll, setExpandAll] = useState(false);
+
+  const toggleSource = (index) => {
+    setExpandedMap((prev) => ({
+      ...prev,
+      [index]: !prev[index],
+    }));
+  };
+
+  const handleToggleAll = () => {
+    const nextState = !expandAll;
+    setExpandAll(nextState);
+    const newMap = {};
+    sources.forEach((_, i) => {
+      newMap[i] = nextState;
+    });
+    setExpandedMap(newMap);
+  };
 
   return (
-    <div style={{ marginTop: "2rem" }}>
-      <h3 style={{ marginBottom: "0.75rem" }}>
-        Sources and Evidence ({sources.length} sources, {evidence.length}{" "}
-        claims)
-      </h3>
+    <div className="sources-viewer">
+      <div className="section-header-row">
+        <div>
+          <div className="section-kicker">Citations & Verification</div>
+          <h3 className="section-card-title">
+            <span className="section-icon">📚</span> Sources & Extracted Claims
+            <span className="section-counter-badge">
+              {sources.length} sources · {evidence.length} claims
+            </span>
+          </h3>
+        </div>
 
-      {sources.map((source, i) => (
-        <SourceCard key={i} source={source} />
-      ))}
+        <button
+          type="button"
+          onClick={handleToggleAll}
+          className="toggle-all-btn"
+        >
+          {expandAll ? "Collapse all" : "Expand all"}
+        </button>
+      </div>
+
+      <div className="source-cards-list">
+        {sources.map((source, i) => (
+          <SourceCard
+            key={i}
+            source={source}
+            isExpanded={Boolean(expandedMap[i])}
+            onToggle={() => toggleSource(i)}
+          />
+        ))}
+      </div>
     </div>
   );
 }

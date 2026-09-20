@@ -86,10 +86,14 @@ def get_research_history(
         ge=1,
         le=100,
         description="Maximum number of research sessions to return.",
-    )
+    ),
+    search: str | None = Query(
+        default=None,
+        description="Optional search term to filter research goals.",
+    ),
 ):
     """List recent research sessions, newest first. Not rate-limited - read-only."""
-    sessions = list_sessions(limit=limit)
+    sessions = list_sessions(limit=limit, search=search)
 
     return ResearchHistoryResponse(
         sessions=sessions
@@ -123,7 +127,8 @@ def start_research(
             detail=str(exc),
         ) from exc
 
-    research_id = create_session(safe_goal)
+    user_id = str(current_user.id) if current_user and hasattr(current_user, "id") else None
+    research_id = create_session(safe_goal, user_id=user_id)
 
     background_tasks.add_task(
         _run_research_pipeline,
@@ -149,6 +154,25 @@ def get_research_status(research_id: str):
         )
 
     return ResearchStatusResponse(**session)
+
+
+@router.delete("/research/{research_id}")
+def delete_research_session(
+    research_id: str,
+    current_user=Depends(get_current_user),
+):
+    """Delete a research session by ID for the current authenticated user."""
+    from app.database.repository import delete_session
+    user_id = str(current_user.id) if current_user and hasattr(current_user, "id") else None
+    deleted = delete_session(research_id, user_id=user_id)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="Research session not found or access denied",
+        )
+
+    return {"status": "deleted", "research_id": research_id}
 
 
 @router.get("/research/{research_id}/events", response_model=ResearchEventsResponse)

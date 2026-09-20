@@ -32,6 +32,7 @@ def _model_to_dict(model: ResearchSessionModel) -> dict:
         "evidence": model.evidence or [],
         "images": model.images or [],
         "videos": model.videos or [],
+        "sources": model.sources or [],
         "evidence_count": model.evidence_count,
         "revision_count": model.revision_count,
         "final_report": model.final_report,
@@ -41,7 +42,7 @@ def _model_to_dict(model: ResearchSessionModel) -> dict:
     }
 
 
-def create_session(user_goal: str, db: Optional[Session] = None) -> str:
+def create_session(user_goal: str, user_id: Optional[str] = None, db: Optional[Session] = None) -> str:
     """Create a new research session in the database and return its ID."""
     research_id = str(uuid.uuid4())
     owns_session = db is None
@@ -51,6 +52,7 @@ def create_session(user_goal: str, db: Optional[Session] = None) -> str:
         record = ResearchSessionModel(
             research_id=research_id,
             user_goal=user_goal,
+            user_id=user_id,
             status="running",
             tasks=[],
             errors=[],
@@ -58,7 +60,7 @@ def create_session(user_goal: str, db: Optional[Session] = None) -> str:
         )
         db.add(record)
         db.commit()
-        logger.info(f"Created research session {research_id}")
+        logger.info(f"Created research session {research_id} for user {user_id}")
         return research_id
     finally:
         if owns_session:
@@ -81,6 +83,8 @@ def update_session(research_id: str, db: Optional[Session] = None, **updates) ->
                 value = [t.model_dump() if hasattr(t, "model_dump") else t for t in value]
             if key == "evidence" and value:
                 value = [e.model_dump() if hasattr(e, "model_dump") else e for e in value]
+            if key == "sources" and value:
+                value = [s.model_dump() if hasattr(s, "model_dump") else s for s in value]
             if key == "final_report" and value and hasattr(value, "model_dump"):
                 value = value.model_dump()
             if key == "critique" and value and hasattr(value, "model_dump"):
@@ -95,13 +99,16 @@ def update_session(research_id: str, db: Optional[Session] = None, **updates) ->
             db.close()
 
 
-def get_session(research_id: str, db: Optional[Session] = None) -> Optional[dict]:
+def get_session(research_id: str, user_id: Optional[str] = None, db: Optional[Session] = None) -> Optional[dict]:
     """Retrieve a session by ID as a dict, or None if it doesn't exist."""
     owns_session = db is None
     db = db or SessionLocal()
 
     try:
-        record = db.get(ResearchSessionModel, research_id)
+        query = db.query(ResearchSessionModel).filter(ResearchSessionModel.research_id == research_id)
+        if user_id:
+            query = query.filter((ResearchSessionModel.user_id == user_id) | (ResearchSessionModel.user_id.is_(None)))
+        record = query.first()
         if record is None:
             return None
         return _model_to_dict(record)
@@ -109,26 +116,58 @@ def get_session(research_id: str, db: Optional[Session] = None) -> Optional[dict
         if owns_session:
             db.close()
 
-def list_sessions(limit: int = 20, db: Optional[Session] = None) -> list[dict]:
-    """
-    Return the most recent research sessions, newest first.
 
-    Only the fields required by the history API are selected, avoiding
-    loading large evidence, image, video, and event payloads.
+def delete_session(research_id: str, user_id: Optional[str] = None, db: Optional[Session] = None) -> bool:
+    """Delete a research session by ID, returning True if deleted."""
+    owns_session = db is None
+    db = db or SessionLocal()
+
+    try:
+        query = db.query(ResearchSessionModel).filter(ResearchSessionModel.research_id == research_id)
+        if user_id:
+            query = query.filter((ResearchSessionModel.user_id == user_id) | (ResearchSessionModel.user_id.is_(None)))
+        record = query.first()
+        if not record:
+            return False
+        db.delete(record)
+        db.commit()
+        logger.info(f"Deleted research session {research_id}")
+        return True
+    finally:
+        if owns_session:
+            db.close()
+
+
+def list_sessions(
+    limit: int = 20,
+    user_id: Optional[str] = None,
+    search: Optional[str] = None,
+    db: Optional[Session] = None,
+) -> list[dict]:
+    """
+    Return recent research sessions, newest first, with optional user_id and text search filtering.
     """
     owns_session = db is None
     db = db or SessionLocal()
 
     try:
+        query = db.query(
+            ResearchSessionModel.research_id,
+            ResearchSessionModel.user_goal,
+            ResearchSessionModel.status,
+            ResearchSessionModel.created_at,
+            ResearchSessionModel.final_report,
+        )
+
+        if user_id:
+            query = query.filter((ResearchSessionModel.user_id == user_id) | (ResearchSessionModel.user_id.is_(None)))
+
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            query = query.filter(ResearchSessionModel.user_goal.ilike(pattern))
+
         records = (
-            db.query(
-                ResearchSessionModel.research_id,
-                ResearchSessionModel.user_goal,
-                ResearchSessionModel.status,
-                ResearchSessionModel.created_at,
-                ResearchSessionModel.final_report,
-            )
-            .order_by(ResearchSessionModel.created_at.desc())
+            query.order_by(ResearchSessionModel.created_at.desc())
             .limit(limit)
             .all()
         )

@@ -19,6 +19,12 @@ from app.agents.researcher import run_researcher, ResearcherError
 from app.graph.events import append_event
 from app.graph.state import AgentState
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from app.utils.citation_engine import (
+    assign_citation_numbers,
+    create_source,
+    deduplicate_sources,
+    map_evidence_to_sources,
+)
 from app.utils.observability import timed_stage
 from app.utils.logger import get_logger
 
@@ -80,6 +86,7 @@ def researcher_node(state: AgentState) -> dict:
         logger.info(f"[Graph] Starting research for task {task.id}: {task.description}")
         return task, run_researcher(task)
 
+    all_web_results = []
     max_workers = min(len(tasks), 5)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -92,11 +99,12 @@ def researcher_node(state: AgentState) -> dict:
             task = future_to_task[future]
 
             try:
-                _, (evidence, images, videos) = future.result()
+                _, (evidence, images, videos, web_results) = future.result()
 
                 all_evidence.extend(evidence)
                 all_images.extend(images)
                 all_videos.extend(videos)
+                all_web_results.extend(web_results)
 
                 events = append_event(
                     events,
@@ -155,8 +163,30 @@ def researcher_node(state: AgentState) -> dict:
         f"{len(all_videos)} videos"
     )
 
+    # ---------------------------------------------------------
+    # Citation engine: create, dedup, number sources; map evidence
+    # ---------------------------------------------------------
+    raw_sources = []
+    for wr in all_web_results:
+        raw_sources.append(create_source(wr, source_type="web"))
+    for img in all_images:
+        raw_sources.append(create_source(img, source_type="image"))
+    for vid in all_videos:
+        raw_sources.append(create_source(vid, source_type="video"))
+
+    sources = deduplicate_sources(raw_sources)
+    sources = assign_citation_numbers(sources)
+    all_evidence = map_evidence_to_sources(all_evidence, sources)
+
+    logger.info(
+        f"[Graph] Citation engine: "
+        f"{len(sources)} unique sources, "
+        f"{sum(1 for e in all_evidence if e.citation_num is not None)} mapped claims"
+    )
+
     return {
         "evidence": all_evidence,
+        "sources": [s.model_dump() for s in sources],
         "images": all_images,
         "videos": all_videos,
         "errors": errors,
@@ -177,6 +207,7 @@ def writer_critic_node(state: AgentState) -> dict:
             user_goal=state["user_goal"],
             tasks=state.get("tasks", []),
             evidence=state.get("evidence", []),
+            sources=state.get("sources", []),
         )
 
         events = append_event(

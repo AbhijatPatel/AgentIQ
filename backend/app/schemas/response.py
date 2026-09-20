@@ -96,6 +96,11 @@ class ResearchStatusResponse(BaseModel):
         default_factory=list,
         description="Videos collected during research.",
     )
+
+    sources: list[dict] = Field(
+        default_factory=list,
+        description="Normalized, deduplicated sources with citation numbers.",
+    )
 class ResearchEventsResponse(BaseModel):
     """Response containing agent progress events for a research session."""
 

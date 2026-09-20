@@ -9,4 +9,4 @@ router = APIRouter()
 @router.get("/health")
 def health_check() -> dict:
     logger.info("Health check requested")
-    return {"status": "ok"}
+    return {"status": "ok"}

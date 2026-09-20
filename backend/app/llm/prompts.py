@@ -25,10 +25,16 @@ Your only job is to take a high-level user research goal and break it down \
 into a small set of clear, actionable research tasks.
 
 RULES:
+- MULTILINGUAL SUPPORT: You support user goals in ANY language or dialect \
+  (English, Hindi, Hinglish, Spanish, French, German, Chinese, Japanese, \
+  Arabic, Russian, Portuguese, etc.). Always accurately interpret the user's intent.
 - Identify what information is actually needed to satisfy the user's goal.
 - Break the goal into 3 to 6 distinct, non-overlapping tasks.
 - Do NOT create duplicate or near-duplicate tasks.
 - Each task must be something a researcher can actually search for or investigate.
+- For search tasks, retain key technical terms, entities, and technology names in English \
+  (e.g., "LangGraph architecture and state graph patterns") so global search engines, \
+  YouTube, and documentation repositories can retrieve comprehensive results.
 - Assign a priority of "high", "medium", or "low" to each task.
 - Do NOT attempt to answer the goal yourself. Only plan the research.
 
@@ -125,30 +131,42 @@ or invent new ones.
 RULES:
 - Primarily use the collected evidence. Do not fabricate citations, sources, \
   URLs, or facts that are not in the evidence provided.
+- CITATION NUMBERS: A Source Catalog of numbered references will be provided. \
+  When referencing a source, use its citation number in square brackets, \
+  e.g. [1], [2], [3]. Only use citation numbers that exist in the catalog. \
+  Do NOT invent citation numbers or URLs.
 - If the evidence is insufficient to fully address the user's goal or a \
-  specific task, explicitly say so in the "limitations" section instead of \
+  specific task, explicitly say so in the \"limitations\" section instead of \
   making something up.
-- Write in clear, professional English suitable for a research report.
-- Every claim in "findings" should be traceable back to the evidence you were given.
+- LANGUAGE & LOCALIZATION: Write the report in the primary language/dialect of the \
+  user's research goal or as requested by the user:
+  * If the user asked in Hindi (e.g., Devanagari or pure Hindi), write the report in natural, authoritative Hindi.
+  * If the user asked in Hinglish (Hindi written in Roman script) or conversational Hinglish, write in natural, engaging Hindi/English (Hinglish) with clear technical terminology.
+  * If the user asked in Spanish, French, German, Chinese, Japanese, Arabic, Russian, Portuguese, etc., write the report fluently and professionally in that language.
+  * If the user asked in English or language is not specified, write in clear, professional English.
+  Ensure all section titles, executive summary, findings, analysis, limitations, and conclusion are written in that target language.
+- Every claim in \"findings\" should be traceable back to the evidence you were given.
+- Keep each prose section concise: 2 to 4 sentences.
+- Include at most 8 references. Use only references from the Source Catalog provided.
 
 OUTPUT FORMAT:
 Return ONLY a JSON object with this exact shape:
 {
-  "title": "string",
-  "executive_summary": "string",
-  "introduction": "string",
-  "findings": "string",
-  "analysis": "string",
-  "limitations": "string",
-  "conclusion": "string",
-  "references": [
-    {"title": "string", "url": "string or null"}
+  \"title\": \"string\",
+  \"executive_summary\": \"string\",
+  \"introduction\": \"string\",
+  \"findings\": \"string\",
+  \"analysis\": \"string\",
+  \"limitations\": \"string\",
+  \"conclusion\": \"string\",
+  \"references\": [
+    {\"title\": \"string\", \"url\": \"string or null\"}
   ]
 }
 """
 
 
-def writer_user_prompt(user_goal: str, tasks: list, evidence: list) -> str:
+def writer_user_prompt(user_goal: str, tasks: list, evidence: list, source_catalog: str = "") -> str:
     """
     Build the user-turn prompt for the Writer agent.
 
@@ -156,6 +174,7 @@ def writer_user_prompt(user_goal: str, tasks: list, evidence: list) -> str:
         user_goal: The original high-level user goal.
         tasks: List of task dicts from the Planner.
         evidence: List of evidence dicts gathered by the Researcher.
+        source_catalog: Formatted numbered source catalog from citation engine.
     """
     tasks_text = "\n".join(f"- {t['description']}" for t in tasks)
     evidence_text = "\n".join(
@@ -163,7 +182,11 @@ def writer_user_prompt(user_goal: str, tasks: list, evidence: list) -> str:
         f"{e.get('claim', '')} (source: {e.get('source_title', 'unknown')})"
         for e in evidence
     )
-    
+
+    catalog_section = ""
+    if source_catalog and source_catalog != "(no sources collected)":
+        catalog_section = f"""\n\nSource Catalog (use these citation numbers in your report):
+{source_catalog}"""
 
     return f"""User goal:
 "{user_goal}"
@@ -175,7 +198,7 @@ Research tasks that were investigated:
 
 Collected evidence:
 {evidence_text if evidence_text else "(no evidence was collected)"}
-
+{catalog_section}
 
 
 Write the full research report following your instructions and output format."""
@@ -203,6 +226,10 @@ EVALUATE ON:
 8. Writing quality - is it clear and well-organized?
 
 RULES:
+- MULTILINGUAL EVALUATION: The draft report may be written in any language \
+  (matching the user's research goal, such as Hindi, Hinglish, Spanish, French, German, \
+  Chinese, Japanese, Arabic, Russian, Portuguese, etc.). Evaluate its factual quality, \
+  coherence, and structure in that language without penalizing non-English output.
 - Be strict. A vague or unsupported claim should lower the score.
 - If evidence was insufficient and the Writer correctly flagged it as a \
   limitation, do NOT penalize that honesty - penalize fabrication instead.
@@ -254,6 +281,7 @@ def writer_revision_prompt(
     previous_draft: dict,
     critique_issues: list,
     critique_suggestions: list,
+    source_catalog: str = "",
 ) -> str:
     """
     Build the user-turn prompt for a Writer REVISION pass.
@@ -271,6 +299,11 @@ def writer_revision_prompt(
     issues_text = "\n".join(f"- {issue}" for issue in critique_issues) or "(none listed)"
     suggestions_text = "\n".join(f"- {s}" for s in critique_suggestions) or "(none listed)"
 
+    catalog_section = ""
+    if source_catalog and source_catalog != "(no sources collected)":
+        catalog_section = f"""\n\nSource Catalog (use these citation numbers in your report):
+{source_catalog}"""
+
     return f"""User goal:
 "{user_goal}"
 
@@ -279,6 +312,7 @@ Research tasks that were investigated:
 
 Collected evidence:
 {evidence_text if evidence_text else "(no evidence was collected)"}
+{catalog_section}
 
 Your PREVIOUS draft report:
 {previous_draft}
