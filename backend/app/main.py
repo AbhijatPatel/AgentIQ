@@ -15,7 +15,6 @@ from slowapi.errors import RateLimitExceeded
 
 from app.api.routes import auth, documents, health, research
 from app.config.settings import settings
-from app.database.connection import init_db
 from app.utils.error_handlers import register_error_handlers
 from app.utils.logger import get_logger
 from app.utils.rate_limit import limiter
@@ -30,8 +29,6 @@ async def lifespan(app: FastAPI):
         f"{settings.APP_NAME} starting "
         f"in {settings.ENVIRONMENT} mode"
     )
-
-    init_db()
 
     yield
 
