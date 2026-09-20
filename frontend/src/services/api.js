@@ -9,7 +9,7 @@
  * VITE_API_BASE to the absolute backend URL.
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE || "/api";
+const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || "/api";
 
 // ─── Retry / resilience config ──────────────────────────────────────
 const MAX_RETRIES = 3;
@@ -147,7 +147,7 @@ export async function requestRegisterOtp(name, email, password) {
 
   if (!response.ok) {
     throw new Error(
-      data.detail || `Could not send verification code (${response.status})`
+      data.message || data.detail || `Could not send verification code (${response.status})`
     );
   }
 
@@ -237,7 +237,7 @@ export async function verifyOtp(email, code) {
     body: JSON.stringify({ email, code }),
   });
   const data = await parseJSON(response);
-  if (!response.ok) throw new Error(data.detail || `Code verification failed (${response.status})`);
+  if (!response.ok) throw new Error(data.message || data.detail || `Code verification failed (${response.status})`);
   localStorage.setItem("agentiq_token", data.access_token);
   localStorage.setItem("agentiq_user", JSON.stringify(data.user));
   return data;
