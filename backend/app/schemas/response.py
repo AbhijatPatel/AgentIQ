@@ -186,7 +186,3 @@ class ResearchHistoryResponse(BaseModel):
         default_factory=list,
         description="Recent research sessions, newest first.",
     )
-
-class ResearchHistoryResponse(BaseModel):
-    """Response for GET /api/research (list)"""
-    sessions: list[ResearchHistoryItem] = Field(default_factory=list)
