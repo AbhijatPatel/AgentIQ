@@ -4,7 +4,7 @@
 
 AgentIQ is a production-style AI research platform where multiple specialized agents collaborate to research a user-defined topic, gather evidence from multiple sources, generate a structured report, critique the result, and improve the final output.
 
-The system combines **multi-agent orchestration, RAG, web research, multimedia search, LLM resilience, caching, security, authentication, and Docker deployment** into a single full-stack application.
+The system combines **multi-agent orchestration, RAG, web research, multimedia search, LLM resilience, caching, security, authentication, and Vercel/Render deployment** into a single full-stack application.
 
 ---
 
@@ -126,29 +126,26 @@ The frontend provides an interactive interface for:
 * Viewing multimedia results
 * Tracking agent activity
 
-### 🐳 Docker Deployment
+### 🚀 Production Deployment
 
-AgentIQ can run as a multi-container application using Docker Compose:
+AgentIQ is designed to be deployed using Vercel (Frontend) and Render (Backend):
 
 ```text
-┌──────────────────────────────┐
-│          Frontend            │
-│       React + Nginx          │
-│          Port 80             │
-└──────────────┬───────────────┘
+       GitHub Repository
                │
-               ↓
-┌──────────────────────────────┐
-│          Backend             │
-│       FastAPI + Python       │
-│          Port 8000           │
-└──────────────┬───────────────┘
-               │
-               ↓
-┌──────────────────────────────┐
-│         PostgreSQL           │
-│          Port 5432           │
-└──────────────────────────────┘
+       ┌───────┴───────┐
+       ↓               ↓
+┌──────────────┐ ┌──────────────┐
+│    Vercel    │ │    Render    │
+│ React / Vite │ │   FastAPI    │
+│   Frontend   │ │   Backend    │
+└──────────────┘ └──────┬───────┘
+                        │
+                        ↓
+                 ┌──────────────┐
+                 │    Render    │
+                 │  PostgreSQL  │
+                 └──────────────┘
 ```
 
 ---
@@ -429,41 +426,23 @@ http://localhost:5173
 
 ---
 
-## 🐳 Docker Deployment
+## 🚀 Production Deployment (Vercel + Render)
 
-AgentIQ includes Docker Compose configuration for:
+AgentIQ is configured for seamless deployment to modern cloud platforms.
 
-* PostgreSQL
-* FastAPI backend
-* React/Nginx frontend
+### 1. Backend (Render)
+1. Create a new **PostgreSQL** instance on Render.
+2. Create a new **Web Service** on Render, pointing to your GitHub repository.
+3. Render will automatically detect the `render.yaml` blueprint.
+4. Add the required environment variables (`JWT_SECRET_KEY`, `OPENAI_API_KEY`, etc.) in the Render dashboard.
 
-From the project root:
+### 2. Frontend (Vercel)
+1. Create a new project on Vercel and import your GitHub repository.
+2. Ensure the Framework Preset is set to **Vite**.
+3. Add the `VITE_API_URL` environment variable pointing to your Render backend URL (e.g., `https://agentiq-backend.onrender.com/api`).
+4. Deploy!
 
-```powershell
-docker compose up -d --build
-```
-
-Check containers:
-
-```powershell
-docker compose ps
-```
-
-Expected services:
-
-```text
-agentiq-backend
-agentiq-postgres
-agentiq-frontend
-```
-
-Stop services:
-
-```powershell
-docker compose down
-```
-
-The production-style frontend is served through Nginx.
+*(Note: Docker configuration files like `Dockerfile` and `docker-compose.yml` are retained in the repository for local development convenience).*
 
 ---
 
@@ -619,7 +598,6 @@ AgentIQ demonstrates practical implementation of:
 * Server-sent events
 * React dashboards
 * PostgreSQL
-* Docker
 * Production-style deployment
 * Automated testing
 
@@ -664,7 +642,7 @@ LLM Resilience
        ↓
 Production Readiness
        ↓
-Docker Deployment
+Vercel + Render Deployment
 ```
 
 ---
