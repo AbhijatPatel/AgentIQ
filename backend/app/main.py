@@ -30,6 +30,14 @@ async def lifespan(app: FastAPI):
         f"in {settings.ENVIRONMENT} mode"
     )
 
+    # Safe startup diagnostics (no secrets printed)
+    llm_key = settings.effective_llm_api_key
+    llm_provider = "Groq" if "groq" in settings.LLM_BASE_URL.lower() or llm_key.startswith("gsk_") else ("OpenRouter" if "openrouter" in settings.LLM_BASE_URL.lower() else "OpenAI")
+    logger.info("Startup Check: LLM configured: %s (provider=%s, model=%s)", bool(llm_key), llm_provider if llm_key else "none", settings.LLM_MODEL)
+    logger.info("Startup Check: Database configured: %s", bool(settings.DATABASE_URL.strip()))
+    logger.info("Startup Check: SMTP configured: %s (host=%s, port=%d)", settings.is_smtp_configured, settings.SMTP_HOST or "none", settings.SMTP_PORT)
+    logger.info("Startup Check: Web Search configured: %s", bool(settings.TAVILY_API_KEY.strip()))
+
     yield
 
     logger.info(

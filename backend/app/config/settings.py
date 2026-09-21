@@ -1,5 +1,6 @@
 from pathlib import Path
-
+from typing import Any
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +19,7 @@ class Settings(BaseSettings):
 
     # LLM configuration
     OPENAI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
     LLM_BASE_URL: str = "https://api.groq.com/openai/v1"
     LLM_MODEL: str = "openai/gpt-oss-120b"
     LLM_FALLBACK_MODEL: str = "openai/gpt-oss-20b"
@@ -51,6 +53,9 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = ""
     SMTP_USE_TLS: bool = True
+    SMTP_USE_SSL: bool = False
+    SMTP_TIMEOUT_SECONDS: int = 10
+    SMTP_MAX_RETRIES: int = 2
 
     # Web Search
     TAVILY_API_KEY: str = ""
@@ -61,6 +66,32 @@ class Settings(BaseSettings):
     # Video Search
     PEXELS_API_KEY: str = ""
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: Any) -> str:
+        if isinstance(v, str):
+            s = v.strip()
+            # Render and Heroku provide postgres:// URLs which SQLAlchemy 1.4+ rejects
+            if s.startswith("postgres://"):
+                return "postgresql://" + s[len("postgres://"):]
+            return s
+        return ""
+
+    @property
+    def effective_llm_api_key(self) -> str:
+        """Returns whichever API key is configured (OPENAI_API_KEY or GROQ_API_KEY)."""
+        return (self.OPENAI_API_KEY or self.GROQ_API_KEY or "").strip()
+
+    @property
+    def is_smtp_configured(self) -> bool:
+        """Returns True if minimum required SMTP settings are present."""
+        return bool(self.SMTP_HOST.strip() and self.SMTP_FROM_EMAIL.strip())
+
+    @property
+    def is_llm_configured(self) -> bool:
+        """Returns True if an LLM API key is present."""
+        return bool(self.effective_llm_api_key)
+
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[2] / ".env",
         env_file_encoding="utf-8",
@@ -69,3 +100,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+

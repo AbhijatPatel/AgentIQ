@@ -25,7 +25,15 @@ import time
 from threading import Semaphore
 from typing import Any, Optional
 
-from openai import APIError, APITimeoutError, OpenAI, RateLimitError
+from openai import (
+    APIConnectionError,
+    APIError,
+    APITimeoutError,
+    AuthenticationError,
+    InternalServerError,
+    OpenAI,
+    RateLimitError,
+)
 
 from app.config.settings import settings
 from app.utils.logger import get_logger
@@ -46,39 +54,55 @@ class LLMClient:
     _semaphore = Semaphore(settings.LLM_CONCURRENCY_LIMIT)
 
     def __init__(self) -> None:
-        if not settings.OPENAI_API_KEY:
+        api_key = settings.effective_llm_api_key
+        if not api_key:
             logger.warning(
-                "OPENAI_API_KEY is not set. "
-                "LLM calls will fail until you add it to your .env file."
+                "No LLM API key configured (neither OPENAI_API_KEY nor GROQ_API_KEY). "
+                "LLM calls will fail until configured."
             )
 
         client_kwargs = {
-            "api_key": settings.OPENAI_API_KEY,
-            "timeout": settings.LLM_TIMEOUT_SECONDS,
+            "api_key": api_key or "missing_key",
+            "timeout": float(settings.LLM_TIMEOUT_SECONDS),
             "max_retries": 0,
         }
 
-        if settings.LLM_BASE_URL:
-            client_kwargs["base_url"] = settings.LLM_BASE_URL
+        base_url = settings.LLM_BASE_URL.strip() if settings.LLM_BASE_URL else ""
+        if not base_url:
+            if api_key.startswith("gsk_"):
+                base_url = "https://api.groq.com/openai/v1"
+            elif api_key.startswith("sk-or-"):
+                base_url = "https://openrouter.ai/api/v1"
+            else:
+                base_url = "https://api.openai.com/v1"
+
+        if base_url:
+            client_kwargs["base_url"] = base_url
 
         self._client = OpenAI(**client_kwargs)
-
+        self._base_url = base_url
         self._model = settings.LLM_MODEL
         self._fallback_model = settings.LLM_FALLBACK_MODEL
         self._temperature = settings.LLM_TEMPERATURE
+
+        provider_name = "Groq" if "groq" in base_url.lower() else ("OpenRouter" if "openrouter" in base_url.lower() else "OpenAI")
+        logger.info(
+            "LLMClient initialized (provider=%s, primary_model=%s, fallback_model=%s, base_url=%s)",
+            provider_name,
+            self._model,
+            self._fallback_model,
+            base_url,
+        )
 
     def _calculate_retry_delay(self, attempt: int) -> float:
         """
         Calculate exponential backoff delay with jitter.
         """
-
         delay = min(
             settings.LLM_RETRY_BASE_DELAY_SECONDS * (2**attempt),
             settings.LLM_RATE_LIMIT_MAX_DELAY_SECONDS,
         )
-
         jitter = random.uniform(0, delay * 0.25)
-
         return delay + jitter
 
     def _get_retry_after(
@@ -88,19 +112,15 @@ class LLMClient:
         """
         Read Retry-After header when provided by the provider.
         """
-
         response = getattr(exc, "response", None)
-
         if response is None:
             return None
 
         headers = getattr(response, "headers", None)
-
         if not headers:
             return None
 
         retry_after_header = headers.get("retry-after")
-
         if not retry_after_header:
             return None
 
@@ -120,12 +140,9 @@ class LLMClient:
     ) -> bool:
         """
         Detect provider-side daily token quota errors.
-
         These errors should not waste time retrying the same model.
         """
-
         error_text = str(exc).lower()
-
         return (
             "tokens per day" in error_text
             or "tpd" in error_text
@@ -142,15 +159,8 @@ class LLMClient:
         response_format: Optional[dict[str, str]] = None,
     ) -> str:
         """
-        Generate a text response from the LLM.
-
-        Model selection:
-
-        1. Requested model / primary model
-        2. Fallback model if the primary hits a rate limit
-        3. Automatic retries for temporary rate limits
+        Generate a text response from the LLM with automatic retry and model fallback.
         """
-
         messages = []
 
         if system:
@@ -169,11 +179,8 @@ class LLMClient:
         )
 
         requested_model = model or self._model
-
         models_to_try = [requested_model]
 
-        # Only automatically use fallback when the caller is
-        # using the configured primary model.
         if (
             requested_model == self._model
             and self._fallback_model
@@ -184,9 +191,7 @@ class LLMClient:
         last_error: Exception | None = None
 
         for current_model in models_to_try:
-
             for attempt in range(settings.LLM_MAX_RETRIES + 1):
-
                 try:
                     logger.debug(
                         "LLM request attempt %s/%s using model=%s",
@@ -196,10 +201,8 @@ class LLMClient:
                     )
 
                     with self._semaphore:
-
-                        time.sleep(
-                            settings.LLM_MIN_REQUEST_DELAY_SECONDS
-                        )
+                        if settings.LLM_MIN_REQUEST_DELAY_SECONDS > 0:
+                            time.sleep(settings.LLM_MIN_REQUEST_DELAY_SECONDS)
 
                         request_kwargs = {
                             "model": current_model,
@@ -217,175 +220,126 @@ class LLMClient:
                         }
 
                         if response_format is not None:
-                            request_kwargs["response_format"] = (
-                                response_format
-                            )
+                            request_kwargs["response_format"] = response_format
 
-                        response = (
-                            self._client.chat.completions.create(
-                                **request_kwargs
-                            )
+                        response = self._client.chat.completions.create(
+                            **request_kwargs
                         )
 
                     content = response.choices[0].message.content
-
                     if content is None:
-                        raise LLMClientError(
-                            "LLM returned an empty response."
-                        )
+                        raise LLMClientError("LLM returned an empty response.")
 
                     logger.info(
                         "LLM request successful using model=%s",
                         current_model,
                     )
-
                     return content.strip()
 
+                except AuthenticationError as exc:
+                    # Permanent credential error - fail fast immediately
+                    logger.error(
+                        "LLM authentication failed for model=%s. Please verify the API key.",
+                        current_model,
+                    )
+                    raise LLMClientError("LLM authentication failed. Please verify the API key.") from exc
+
                 except RateLimitError as exc:
-
                     last_error = exc
-
-                    # -------------------------------------------------
-                    # DAILY TOKEN QUOTA
-                    # -------------------------------------------------
-                    #
-                    # Do NOT retry the exhausted model.
-                    # Immediately switch to fallback.
-                    #
                     if self._is_daily_token_limit(exc):
-
                         if current_model != models_to_try[-1]:
-
                             logger.warning(
-                                "Daily token quota reached for "
-                                "model=%s. Switching to fallback "
-                                "model=%s.",
+                                "Daily token quota reached for model=%s. Switching to fallback model=%s.",
                                 current_model,
                                 self._fallback_model,
                             )
-
                             break
-
-                        logger.error(
-                            "Daily token quota also reached for "
-                            "fallback model=%s.",
-                            current_model,
-                        )
-
                         raise LLMClientError(
-                            "All configured LLM models have reached "
-                            "their daily token quota. "
-                            "Please try again later."
+                            "All configured LLM models have reached their daily token quota. Please try again later."
                         ) from exc
 
-                    # -------------------------------------------------
-                    # TEMPORARY RATE LIMIT
-                    # -------------------------------------------------
-
                     if attempt >= settings.LLM_MAX_RETRIES:
-
                         logger.error(
-                            "LLM rate limit persisted for "
-                            "model=%s after %s retries.",
+                            "LLM rate limit persisted for model=%s after %s retries.",
                             current_model,
                             settings.LLM_MAX_RETRIES,
                         )
-
-                        # Try fallback before giving up.
                         if current_model != models_to_try[-1]:
-
                             logger.warning(
-                                "Switching from model=%s to "
-                                "fallback model=%s.",
+                                "Switching from model=%s to fallback model=%s.",
                                 current_model,
                                 self._fallback_model,
                             )
-
                             break
-
                         raise LLMClientError(
-                            "LLM rate limit persisted after "
-                            "automatic retries. "
-                            "Please try again later."
+                            "LLM rate limit persisted after automatic retries. Please try again later."
                         ) from exc
 
                     retry_after = self._get_retry_after(exc)
-
-                    if retry_after is not None:
-
-                        delay = min(
-                            retry_after,
-                            settings.LLM_RATE_LIMIT_MAX_DELAY_SECONDS,
-                        )
-
-                    else:
-
-                        delay = self._calculate_retry_delay(
-                            attempt
-                        )
-
+                    delay = min(retry_after, settings.LLM_RATE_LIMIT_MAX_DELAY_SECONDS) if retry_after is not None else self._calculate_retry_delay(attempt)
                     logger.warning(
-                        "LLM rate limit hit for model=%s. "
-                        "Retry %s/%s in %.2f seconds.",
+                        "LLM rate limit hit for model=%s. Retry %s/%s in %.2f seconds.",
                         current_model,
                         attempt + 1,
                         settings.LLM_MAX_RETRIES,
                         delay,
                     )
-
                     time.sleep(delay)
 
-                except APITimeoutError as exc:
-
-                    logger.error(
-                        "LLM call timed out using model=%s: %s",
+                except (APIConnectionError, APITimeoutError, InternalServerError) as exc:
+                    last_error = exc
+                    error_type = type(exc).__name__
+                    logger.warning(
+                        "LLM transient error (%s) for model=%s on attempt %d/%d",
+                        error_type,
                         current_model,
-                        exc,
+                        attempt + 1,
+                        settings.LLM_MAX_RETRIES + 1,
                     )
 
-                    raise LLMClientError(
-                        "The LLM request timed out. "
-                        "Please try again."
-                    ) from exc
+                    if attempt < settings.LLM_MAX_RETRIES:
+                        delay = self._calculate_retry_delay(attempt)
+                        logger.info("Retrying LLM request in %.2f seconds...", delay)
+                        time.sleep(delay)
+                    else:
+                        if current_model != models_to_try[-1]:
+                            logger.warning(
+                                "Model %s failed with %s after %d retries. Switching to fallback model=%s.",
+                                current_model,
+                                error_type,
+                                settings.LLM_MAX_RETRIES,
+                                self._fallback_model,
+                            )
+                            break
+                        raise LLMClientError(
+                            f"The AI service is temporarily unreachable ({error_type}). Please try again."
+                        ) from exc
 
                 except APIError as exc:
-
-                    logger.error(
-                        "LLM API error using model=%s: %s",
-                        current_model,
-                        exc,
-                    )
-
-                    raise LLMClientError(
-                        f"LLM API error: {exc}"
-                    ) from exc
+                    last_error = exc
+                    logger.error("LLM API error using model=%s: %s", current_model, type(exc).__name__)
+                    if getattr(exc, "status_code", 0) >= 500 and attempt < settings.LLM_MAX_RETRIES:
+                        delay = self._calculate_retry_delay(attempt)
+                        time.sleep(delay)
+                    else:
+                        if current_model != models_to_try[-1]:
+                            break
+                        raise LLMClientError("The AI service returned an error. Please try again.") from exc
 
                 except LLMClientError:
-
                     raise
 
                 except Exception as exc:
-
-                    logger.error(
-                        "Unexpected error calling LLM "
-                        "using model=%s: %s",
-                        current_model,
-                        exc,
-                    )
-
-                    raise LLMClientError(
-                        f"Unexpected error calling LLM: {exc}"
-                    ) from exc
+                    last_error = exc
+                    logger.error("Unexpected error calling LLM using model=%s: %s", current_model, type(exc).__name__)
+                    if current_model != models_to_try[-1]:
+                        break
+                    raise LLMClientError("Unexpected error communicating with AI service.") from exc
 
         if last_error:
+            raise LLMClientError("All configured LLM models failed.") from last_error
 
-            raise LLMClientError(
-                "All configured LLM models failed."
-            ) from last_error
-
-        raise LLMClientError(
-            "LLM request failed unexpectedly."
-        )
+        raise LLMClientError("LLM request failed unexpectedly.")
 
     def generate_json(
         self,

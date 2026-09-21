@@ -291,3 +291,73 @@ def test_authenticated_user_can_start_research(
 
     assert "research_id" in data
     assert data["status"] == "running"
+
+
+def test_request_otp_nonexistent_user_returns_404(client):
+    """Verify that requesting login OTP for unregistered email returns 404."""
+    response = client.post(
+        "/api/auth/otp/request",
+        json={"email": "nobody@example.com"},
+    )
+    assert response.status_code == 404
+    assert "No account exists" in response.json()["message"] or "No account exists" in response.json().get("detail", "")
+
+
+def test_request_otp_smtp_auth_error_returns_500(client):
+    """Verify that SMTP authentication failure returns 500 (not 502)."""
+    from app.utils.otp import OTPAuthError
+
+    # Register user first
+    client.post(
+        "/api/auth/register",
+        json={
+            "name": "OTP User",
+            "email": "otpuser@example.com",
+            "password": "Test@12345",
+        },
+    )
+
+    with patch("app.api.routes.auth.send_otp_email", side_effect=OTPAuthError("Auth failed")):
+        response = client.post(
+            "/api/auth/otp/request",
+            json={"email": "otpuser@example.com"},
+        )
+    assert response.status_code == 500
+
+
+def test_request_otp_smtp_transient_error_returns_503(client):
+    """Verify that SMTP connection drop returns 503 (not 502)."""
+    from app.utils.otp import OTPTransientError
+
+    # Register user first
+    client.post(
+        "/api/auth/register",
+        json={
+            "name": "OTP User 2",
+            "email": "otpuser2@example.com",
+            "password": "Test@12345",
+        },
+    )
+
+    with patch("app.api.routes.auth.send_otp_email", side_effect=OTPTransientError("Connection dropped")):
+        response = client.post(
+            "/api/auth/otp/request",
+            json={"email": "otpuser2@example.com"},
+        )
+    assert response.status_code == 503
+
+
+def test_health_diagnostics_endpoint(client):
+    """Verify that /api/health/diagnostics returns safe status without secrets."""
+    response = client.get("/api/health/diagnostics")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert "integrations" in data
+    assert "database" in data["integrations"]
+    assert "llm" in data["integrations"]
+    assert "smtp" in data["integrations"]
+    # Verify no raw password or key fields
+    assert "password" not in str(data).lower()
+    assert "gsk_" not in str(data)
+    assert "sk-" not in str(data)

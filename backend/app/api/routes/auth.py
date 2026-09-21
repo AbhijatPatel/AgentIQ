@@ -15,7 +15,14 @@ from app.utils.auth import (
     hash_password,
     verify_password,
 )
-from app.utils.otp import create_otp, hash_otp, send_otp_email
+from app.utils.otp import (
+    OTPAuthError,
+    OTPDeliveryError,
+    OTPTransientError,
+    create_otp,
+    hash_otp,
+    send_otp_email,
+)
 
 
 router = APIRouter(
@@ -57,6 +64,19 @@ class AuthResponse(BaseModel):
     user: dict
 
 
+def _is_in_cooldown(created_at: Optional[datetime], cooldown_seconds: int) -> tuple[bool, int]:
+    if not created_at:
+        return False, 0
+    now = datetime.now(timezone.utc)
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    elapsed = (now - created_at).total_seconds()
+    if 0 <= elapsed < cooldown_seconds:
+        remaining = int(cooldown_seconds - elapsed)
+        return True, remaining
+    return False, 0
+
+
 @router.post("/register/request-otp")
 def request_register_otp(
     request: RegisterOtpRequest,
@@ -84,9 +104,8 @@ def request_register_otp(
         .first()
     )
     if latest and latest.created_at:
-        created_at = latest.created_at.replace(tzinfo=timezone.utc)
-        if (now - created_at).total_seconds() < settings.OTP_REQUEST_COOLDOWN_SECONDS:
-            remaining = int(settings.OTP_REQUEST_COOLDOWN_SECONDS - (now - created_at).total_seconds())
+        in_cooldown, remaining = _is_in_cooldown(latest.created_at, settings.OTP_REQUEST_COOLDOWN_SECONDS)
+        if in_cooldown:
             raise HTTPException(
                 status_code=429,
                 detail=f"Please wait {remaining}s before requesting another verification code",
@@ -103,10 +122,27 @@ def request_register_otp(
 
     try:
         send_otp_email(email, code, purpose="register")
+    except OTPAuthError as exc:
+        db.delete(challenge)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Email service authentication error. Please contact support.",
+        ) from exc
+    except (OTPTransientError, OTPDeliveryError) as exc:
+        db.delete(challenge)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email service is temporarily unavailable. Please try again in a moment.",
+        ) from exc
     except Exception as exc:
         db.delete(challenge)
         db.commit()
-        raise HTTPException(status_code=502, detail="Could not send verification code") from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not send verification code at this time.",
+        ) from exc
 
     dev_code = code if (not settings.SMTP_HOST or not settings.SMTP_FROM_EMAIL) else None
     return {
@@ -255,9 +291,9 @@ def request_otp(
         .first()
     )
     if latest and latest.created_at:
-        created_at = latest.created_at.replace(tzinfo=timezone.utc)
-        if (now - created_at).total_seconds() < settings.OTP_REQUEST_COOLDOWN_SECONDS:
-            raise HTTPException(status_code=429, detail="Please wait before requesting another code")
+        in_cooldown, remaining = _is_in_cooldown(latest.created_at, settings.OTP_REQUEST_COOLDOWN_SECONDS)
+        if in_cooldown:
+            raise HTTPException(status_code=429, detail=f"Please wait {remaining}s before requesting another code")
 
     code = create_otp()
     challenge = OtpChallengeModel(
@@ -269,6 +305,20 @@ def request_otp(
     db.commit()
     try:
         send_otp_email(str(request.email), code)
+    except OTPAuthError as exc:
+        db.delete(challenge)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Email service authentication error. Please contact support.",
+        ) from exc
+    except (OTPTransientError, OTPDeliveryError) as exc:
+        db.delete(challenge)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email service is temporarily unavailable. Please try again in a moment.",
+        ) from exc
     except RuntimeError as exc:
         db.delete(challenge)
         db.commit()
@@ -276,7 +326,10 @@ def request_otp(
     except Exception as exc:
         db.delete(challenge)
         db.commit()
-        raise HTTPException(status_code=502, detail="Could not send login code") from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not send login code at this time.",
+        ) from exc
 
     dev_code = code if (not settings.SMTP_HOST or not settings.SMTP_FROM_EMAIL) else None
     return {
