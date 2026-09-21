@@ -173,20 +173,20 @@ export async function requestRegisterOtp(name, email, password) {
 }
 
 /**
- * Register a new user with verified OTP code.
+ * Register a new user with name, email, and password.
  */
-export async function registerUser(name, email, password, code) {
+export async function registerUser(name, email, password, code = null) {
+  const payload = { name, email, password };
+  if (code) {
+    payload.code = code;
+  }
+
   const response = await apiFetch("/auth/register", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      name,
-      email,
-      password,
-      code,
-    }),
+    body: JSON.stringify(payload),
   });
 
   const data = await parseJSON(response);
