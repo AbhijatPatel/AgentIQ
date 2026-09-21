@@ -65,8 +65,6 @@ function Auth({ onLogin }) {
   function switchMode() {
     setIsRegister((prev) => !prev);
     setError("");
-    setName("");
-    setEmail("");
     setPassword("");
     setShowPassword(false);
   }
@@ -106,18 +104,33 @@ function Auth({ onLogin }) {
             <span className="error-alert-icon" aria-hidden="true">⚠️</span>
             <div className="error-alert-content">
               <span>{error}</span>
-              {(error.toLowerCase().includes("create an account") || error.toLowerCase().includes("no account")) && !isRegister && (
-                <div style={{ marginTop: "6px" }}>
+              {(error.toLowerCase().includes("already exists") || error.toLowerCase().includes("409") || error.toLowerCase().includes("sign in")) && isRegister && (
+                <div style={{ marginTop: "8px" }}>
                   <button
                     type="button"
                     className="auth-link-btn"
-                    style={{ fontWeight: 600, textDecoration: "underline" }}
+                    style={{ fontWeight: 650, textDecoration: "underline", color: "#4f46e5" }}
+                    onClick={() => {
+                      setIsRegister(false);
+                      setError("");
+                    }}
+                  >
+                    👉 Click here to Sign In with your password →
+                  </button>
+                </div>
+              )}
+              {(error.toLowerCase().includes("create an account") || error.toLowerCase().includes("no account")) && !isRegister && (
+                <div style={{ marginTop: "8px" }}>
+                  <button
+                    type="button"
+                    className="auth-link-btn"
+                    style={{ fontWeight: 650, textDecoration: "underline", color: "#4f46e5" }}
                     onClick={() => {
                       setIsRegister(true);
                       setError("");
                     }}
                   >
-                    Click here to Create Account with this email →
+                    👉 Click here to Create Account with this email →
                   </button>
                 </div>
               )}
