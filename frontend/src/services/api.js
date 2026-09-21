@@ -30,9 +30,9 @@ function getApiBase() {
 const API_BASE = getApiBase();
 
 // ─── Retry / resilience config ──────────────────────────────────────
-const MAX_RETRIES = 3;
-const RETRY_BASE_DELAY_MS = 800;   // doubles each attempt
-const REQUEST_TIMEOUT_MS = 15_000; // 15-second timeout per attempt
+const MAX_RETRIES = 2;
+const RETRY_BASE_DELAY_MS = 1000;  // doubles each attempt
+const REQUEST_TIMEOUT_MS = 60_000; // 60-second timeout per attempt to accommodate Render cold starts
 
 /**
  * Get authentication headers for protected API requests.
