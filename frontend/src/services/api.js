@@ -16,15 +16,21 @@ function getApiBase() {
     ""
   ).trim();
 
-  if (!envUrl) {
-    return "/api";
+  if (envUrl) {
+    const cleanUrl = envUrl.replace(/\/+$/, "");
+    return cleanUrl.endsWith("/api") ? cleanUrl : `${cleanUrl}/api`;
   }
 
-  const cleanUrl = envUrl.replace(/\/+$/, "");
-  if (cleanUrl.endsWith("/api")) {
-    return cleanUrl;
+  // If running in development (localhost), use relative /api with Vite dev proxy
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "/api";
+    }
   }
-  return `${cleanUrl}/api`;
+
+  // Default production backend URL on Render
+  return "https://agentiq-backend-4ik5.onrender.com/api";
 }
 
 const API_BASE = getApiBase();
