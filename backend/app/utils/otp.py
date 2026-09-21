@@ -49,17 +49,16 @@ def _mask_email(email: str) -> str:
     return f"{masked_local}@{domain}"
 
 
-def _send_single_attempt(message: EmailMessage) -> None:
-    host = settings.SMTP_HOST.strip()
-    port = settings.SMTP_PORT
+def _send_single_attempt(message: EmailMessage, host: str, port: int, use_ssl: bool) -> None:
     timeout = settings.SMTP_TIMEOUT_SECONDS
-    use_ssl = settings.SMTP_USE_SSL or port == 465
+    username = settings.SMTP_USERNAME.strip()
+    password = settings.sanitized_smtp_password
 
     if use_ssl:
         with smtplib.SMTP_SSL(host, port, timeout=timeout) as smtp:
             smtp.ehlo()
-            if settings.SMTP_USERNAME:
-                smtp.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+            if username:
+                smtp.login(username, password)
             smtp.send_message(message)
     else:
         with smtplib.SMTP(host, port, timeout=timeout) as smtp:
@@ -67,8 +66,8 @@ def _send_single_attempt(message: EmailMessage) -> None:
             if settings.SMTP_USE_TLS:
                 smtp.starttls()
                 smtp.ehlo()
-            if settings.SMTP_USERNAME:
-                smtp.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+            if username:
+                smtp.login(username, password)
             smtp.send_message(message)
 
 
@@ -76,7 +75,7 @@ def send_otp_email(email: str, code: str, purpose: str = "login") -> None:
     subject = f"Your AgentIQ sign-in code: {code}"
     masked = _mask_email(email)
 
-    if not settings.SMTP_HOST or not settings.SMTP_FROM_EMAIL:
+    if not settings.is_smtp_configured:
         logger.info(
             "🔑 [AGENTIQ OTP] Email: %s | Code: %s | Purpose: %s. "
             "(Expires in %s min. SMTP is not configured - set SMTP_HOST in .env for live emails)",
@@ -87,9 +86,10 @@ def send_otp_email(email: str, code: str, purpose: str = "login") -> None:
         )
         return
 
+    from_email = settings.effective_smtp_from_email
     from_header = (
-        formataddr(("AgentIQ", settings.SMTP_FROM_EMAIL))
-        if settings.SMTP_FROM_EMAIL
+        formataddr(("AgentIQ", from_email))
+        if from_email
         else "AgentIQ"
     )
 
@@ -156,31 +156,44 @@ def send_otp_email(email: str, code: str, purpose: str = "login") -> None:
 """
     message.add_alternative(html_content, subtype="html")
 
-    max_retries = max(0, settings.SMTP_MAX_RETRIES)
+    host = settings.SMTP_HOST.strip()
+    primary_port = settings.SMTP_PORT
+    primary_ssl = settings.SMTP_USE_SSL or primary_port == 465
+
+    # Strategy: try primary config first, then fallback to the alternate SSL/STARTTLS port
+    configs_to_try = [(primary_port, primary_ssl)]
+    if primary_port == 587 or not primary_ssl:
+        configs_to_try.append((465, True))
+    else:
+        configs_to_try.append((587, False))
+
+    max_attempts = max(len(configs_to_try), settings.SMTP_MAX_RETRIES + 1)
     last_error: Exception | None = None
 
-    for attempt in range(max_retries + 1):
+    for attempt in range(max_attempts):
+        port, use_ssl = configs_to_try[attempt % len(configs_to_try)]
+        mode_str = "SSL" if use_ssl else "STARTTLS"
         try:
             logger.info(
-                "Attempting to send OTP email to %s via %s:%s (attempt %d/%d)",
+                "Attempting to send OTP email to %s via %s:%d (%s) (attempt %d/%d)",
                 masked,
-                settings.SMTP_HOST,
-                settings.SMTP_PORT,
+                host,
+                port,
+                mode_str,
                 attempt + 1,
-                max_retries + 1,
+                max_attempts,
             )
-            _send_single_attempt(message)
-            logger.info("Successfully sent OTP email to %s", masked)
+            _send_single_attempt(message, host=host, port=port, use_ssl=use_ssl)
+            logger.info("Successfully sent OTP email to %s via %s:%d (%s)", masked, host, port, mode_str)
             return
         except smtplib.SMTPAuthenticationError as exc:
-            # Permanent error: bad credentials or app password
             logger.error(
                 "SMTP authentication failed for host=%s, user=%s (code=%s). Check SMTP credentials.",
-                settings.SMTP_HOST,
+                host,
                 settings.SMTP_USERNAME,
                 getattr(exc, "smtp_code", "unknown"),
             )
-            raise OTPAuthError("SMTP server rejected email credentials") from exc
+            raise OTPAuthError("SMTP server rejected email credentials. Please check App Password.") from exc
         except (
             smtplib.SMTPConnectError,
             smtplib.SMTPServerDisconnected,
@@ -192,14 +205,16 @@ def send_otp_email(email: str, code: str, purpose: str = "login") -> None:
         ) as exc:
             last_error = exc
             logger.warning(
-                "Transient error sending OTP email to %s on attempt %d/%d: %s",
+                "Transient error sending OTP email to %s via %s:%d on attempt %d/%d: %s",
                 masked,
+                host,
+                port,
                 attempt + 1,
-                max_retries + 1,
+                max_attempts,
                 type(exc).__name__,
             )
-            if attempt < max_retries:
-                backoff = (1.5 ** attempt) + random.uniform(0.1, 0.5)
+            if attempt < max_attempts - 1:
+                backoff = (1.0 ** attempt) + random.uniform(0.1, 0.4)
                 time.sleep(backoff)
             else:
                 break
@@ -207,6 +222,7 @@ def send_otp_email(email: str, code: str, purpose: str = "login") -> None:
             logger.error("Unexpected error during OTP email delivery: %s", type(exc).__name__)
             raise OTPDeliveryError(f"Email delivery failed: {type(exc).__name__}") from exc
 
-    logger.error("All %d attempts to send OTP email to %s failed", max_retries + 1, masked)
+    logger.error("All %d attempts to send OTP email to %s failed", max_attempts, masked)
     raise OTPTransientError("Email service is temporarily unavailable. Please try again.") from last_error
+
 

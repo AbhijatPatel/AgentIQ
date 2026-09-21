@@ -99,7 +99,7 @@ def request_register_otp(
     now = datetime.now(timezone.utc)
     latest = (
         db.query(OtpChallengeModel)
-        .filter(OtpChallengeModel.email == email)
+        .filter(OtpChallengeModel.email == email, OtpChallengeModel.used.is_(False))
         .order_by(OtpChallengeModel.created_at.desc())
         .first()
     )
@@ -112,6 +112,26 @@ def request_register_otp(
             )
 
     code = create_otp()
+
+    # Send email FIRST - if delivery fails, do not persist challenge or trigger cooldown
+    try:
+        send_otp_email(email, code, purpose="register")
+    except OTPAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Email service authentication error. Please contact support.",
+        ) from exc
+    except (OTPTransientError, OTPDeliveryError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email service is temporarily unavailable. Please try again in a moment.",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not send verification code at this time.",
+        ) from exc
+
     challenge = OtpChallengeModel(
         email=email,
         code_hash=hash_otp(code),
@@ -120,31 +140,7 @@ def request_register_otp(
     db.add(challenge)
     db.commit()
 
-    try:
-        send_otp_email(email, code, purpose="register")
-    except OTPAuthError as exc:
-        db.delete(challenge)
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Email service authentication error. Please contact support.",
-        ) from exc
-    except (OTPTransientError, OTPDeliveryError) as exc:
-        db.delete(challenge)
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Email service is temporarily unavailable. Please try again in a moment.",
-        ) from exc
-    except Exception as exc:
-        db.delete(challenge)
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not send verification code at this time.",
-        ) from exc
-
-    dev_code = code if (not settings.SMTP_HOST or not settings.SMTP_FROM_EMAIL) else None
+    dev_code = code if not settings.is_smtp_configured else None
     return {
         "message": f"Verification code sent to {email}",
         "dev_code": dev_code,
@@ -228,7 +224,8 @@ def login(
     request: LoginRequest,
     db: Session = Depends(get_db),
 ):
-    user = get_user_by_email(db, request.email)
+    email = str(request.email).lower().strip()
+    user = get_user_by_email(db, email)
 
     if not user:
         raise HTTPException(
@@ -276,7 +273,8 @@ def request_otp(
     request: OtpRequest,
     db: Session = Depends(get_db),
 ):
-    user = get_user_by_email(db, request.email)
+    email = str(request.email).lower().strip()
+    user = get_user_by_email(db, email)
     if not user:
         raise HTTPException(
             status_code=404,
@@ -286,7 +284,7 @@ def request_otp(
     now = datetime.now(timezone.utc)
     latest = (
         db.query(OtpChallengeModel)
-        .filter(OtpChallengeModel.email == str(request.email).lower())
+        .filter(OtpChallengeModel.email == email, OtpChallengeModel.used.is_(False))
         .order_by(OtpChallengeModel.created_at.desc())
         .first()
     )
@@ -296,42 +294,35 @@ def request_otp(
             raise HTTPException(status_code=429, detail=f"Please wait {remaining}s before requesting another code")
 
     code = create_otp()
-    challenge = OtpChallengeModel(
-        email=str(request.email).lower(),
-        code_hash=hash_otp(code),
-        expires_at=now + timedelta(minutes=settings.OTP_EXPIRE_MINUTES),
-    )
-    db.add(challenge)
-    db.commit()
+
+    # Send email FIRST - if delivery fails, do not persist challenge or trigger cooldown
     try:
-        send_otp_email(str(request.email), code)
+        send_otp_email(email, code, purpose="login")
     except OTPAuthError as exc:
-        db.delete(challenge)
-        db.commit()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Email service authentication error. Please contact support.",
         ) from exc
     except (OTPTransientError, OTPDeliveryError) as exc:
-        db.delete(challenge)
-        db.commit()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Email service is temporarily unavailable. Please try again in a moment.",
         ) from exc
-    except RuntimeError as exc:
-        db.delete(challenge)
-        db.commit()
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        db.delete(challenge)
-        db.commit()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Could not send login code at this time.",
         ) from exc
 
-    dev_code = code if (not settings.SMTP_HOST or not settings.SMTP_FROM_EMAIL) else None
+    challenge = OtpChallengeModel(
+        email=email,
+        code_hash=hash_otp(code),
+        expires_at=now + timedelta(minutes=settings.OTP_EXPIRE_MINUTES),
+    )
+    db.add(challenge)
+    db.commit()
+
+    dev_code = code if not settings.is_smtp_configured else None
     return {
         "message": "A login code was sent to your email",
         "dev_code": dev_code,

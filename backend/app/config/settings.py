@@ -83,9 +83,19 @@ class Settings(BaseSettings):
         return (self.OPENAI_API_KEY or self.GROQ_API_KEY or "").strip()
 
     @property
+    def sanitized_smtp_password(self) -> str:
+        """Returns SMTP password with accidental spaces or wrapping quotes removed."""
+        return self.SMTP_PASSWORD.replace(" ", "").replace('"', '').replace("'", "").strip()
+
+    @property
+    def effective_smtp_from_email(self) -> str:
+        """Returns configured FROM email or falls back to SMTP username."""
+        return (self.SMTP_FROM_EMAIL.strip() or self.SMTP_USERNAME.strip())
+
+    @property
     def is_smtp_configured(self) -> bool:
         """Returns True if minimum required SMTP settings are present."""
-        return bool(self.SMTP_HOST.strip() and self.SMTP_FROM_EMAIL.strip())
+        return bool(self.SMTP_HOST.strip() and (self.SMTP_FROM_EMAIL.strip() or self.SMTP_USERNAME.strip()))
 
     @property
     def is_llm_configured(self) -> bool:
@@ -100,4 +110,5 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
 
