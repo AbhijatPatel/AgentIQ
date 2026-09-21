@@ -16,7 +16,8 @@ from app.api.dependencies import (
     get_current_user,
 )
 from app.database.repository import list_sessions
-from app.graph.workflow import run_agentiq
+from app.graph.workflow import agentiq_workflow, run_agentiq
+from app.graph.state import create_initial_state
 from app.schemas.request import ResearchRequest
 from app.schemas.response import (
     ResearchEventsResponse,
@@ -38,21 +39,32 @@ router = APIRouter()
 
 def _run_research_pipeline(research_id: str, user_goal: str) -> None:
     try:
-        final_state = run_agentiq(user_goal)
+        initial_state = create_initial_state(user_goal)
+        current_state = dict(initial_state)
+
+        for step in agentiq_workflow.stream(initial_state):
+            for node_name, node_output in step.items():
+                if isinstance(node_output, dict):
+                    current_state.update(node_output)
+                    if "agent_events" in node_output:
+                        update_session(
+                            research_id,
+                            agent_events=current_state.get("agent_events", []),
+                        )
 
         update_session(
             research_id,
             status="completed",
-            tasks=final_state.get("tasks", []),
-            evidence=final_state.get("evidence", []),
-            evidence_count=len(final_state.get("evidence", [])),
-            images=final_state.get("images", []),
-            videos=final_state.get("videos", []),
-            revision_count=final_state.get("revision_count", 0),
-            final_report=final_state.get("final_report"),
-            critique=final_state.get("critique"),
-            errors=final_state.get("errors", []),
-            agent_events=final_state.get("agent_events", []),
+            tasks=current_state.get("tasks", []),
+            evidence=current_state.get("evidence", []),
+            evidence_count=len(current_state.get("evidence", [])),
+            images=current_state.get("images", []),
+            videos=current_state.get("videos", []),
+            revision_count=current_state.get("revision_count", 0),
+            final_report=current_state.get("final_report"),
+            critique=current_state.get("critique"),
+            errors=current_state.get("errors", []),
+            agent_events=current_state.get("agent_events", []),
         )
         logger.info(f"Research session {research_id} completed")
 

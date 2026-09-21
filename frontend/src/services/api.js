@@ -103,6 +103,15 @@ async function apiFetch(path, options = {}) {
       });
       clearTimeout(timeoutId);
 
+      // Handle 401 Unauthorized (expired token or wiped session)
+      if (response.status === 401 && !path.includes("/auth/login") && !path.includes("/auth/register")) {
+        localStorage.removeItem("agentiq_token");
+        localStorage.removeItem("agentiq_user");
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("agentiq_auth_expired"));
+        }
+      }
+
       // If the server returned a retryable status, loop again
       if (isRetryable(null, response) && attempt < MAX_RETRIES) {
         lastError = new Error(`Server returned ${response.status}`);
@@ -129,7 +138,7 @@ async function apiFetch(path, options = {}) {
   }
   if (lastError?.name === "TypeError") {
     throw new Error(
-      "Could not connect to the server. Please make sure the backend is running on port 8000 and try again."
+      "Could not connect to the backend server. Please try again in a moment."
     );
   }
   throw new Error(

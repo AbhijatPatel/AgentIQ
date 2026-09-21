@@ -37,6 +37,16 @@ function App() {
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
 
+  // Listen for session expiry from API responses
+  useEffect(() => {
+    function handleAuthExpired() {
+      setAuthenticated(false);
+      setUser(null);
+    }
+    window.addEventListener("agentiq_auth_expired", handleAuthExpired);
+    return () => window.removeEventListener("agentiq_auth_expired", handleAuthExpired);
+  }, []);
+
   const handleNavigate = (view) => {
     setCurrentView(view);
     window.location.hash = view;
