@@ -70,6 +70,14 @@ def health_diagnostics(db: Session = Depends(get_db)) -> dict[str, Any]:
                 "model": settings.LLM_MODEL,
                 "fallback_model": settings.LLM_FALLBACK_MODEL,
             },
+            "email": {
+                "configured": settings.is_smtp_configured,
+                "provider": settings.active_email_provider,
+                "resend_active": bool(settings.RESEND_API_KEY.strip()),
+                "smtp_host": _mask_host(settings.SMTP_HOST) if settings.SMTP_HOST else None,
+                "smtp_port": settings.SMTP_PORT if settings.SMTP_HOST else None,
+                "smtp_mode": ssl_mode if settings.SMTP_HOST else None,
+            },
             "smtp": {
                 "configured": settings.is_smtp_configured,
                 "host": _mask_host(settings.SMTP_HOST),

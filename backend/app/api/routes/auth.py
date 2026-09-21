@@ -124,13 +124,19 @@ def request_register_otp(
     except (OTPTransientError, OTPDeliveryError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Email service is temporarily unavailable. Please try again in a moment.",
+            detail=str(exc) or "Email service is temporarily unavailable. Please try again in a moment.",
         ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Could not send verification code at this time.",
         ) from exc
+
+    # Invalidate previous unused challenges for this email
+    db.query(OtpChallengeModel).filter(
+        OtpChallengeModel.email == email,
+        OtpChallengeModel.used.is_(False),
+    ).update({"used": True})
 
     challenge = OtpChallengeModel(
         email=email,
@@ -306,13 +312,19 @@ def request_otp(
     except (OTPTransientError, OTPDeliveryError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Email service is temporarily unavailable. Please try again in a moment.",
+            detail=str(exc) or "Email service is temporarily unavailable. Please try again in a moment.",
         ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Could not send login code at this time.",
         ) from exc
+
+    # Invalidate previous unused challenges for this email
+    db.query(OtpChallengeModel).filter(
+        OtpChallengeModel.email == email,
+        OtpChallengeModel.used.is_(False),
+    ).update({"used": True})
 
     challenge = OtpChallengeModel(
         email=email,

@@ -40,6 +40,35 @@ function Auth({ onLogin }) {
     }
   }, [otpSent]);
 
+  async function handleDirectRegister(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!name.trim()) {
+      setError("Please enter your full name.");
+      return;
+    }
+    if (!email.trim()) {
+      setError("Please enter your email address.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters long.");
+      return;
+    }
+
+    setError("");
+    setDevHint("");
+    setLoading(true);
+
+    try {
+      const data = await registerUser(name, email, password, null);
+      onLogin(data.user);
+    } catch (err) {
+      setError(err.message || "Registration failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSendRegistrationOtp() {
     if (!name.trim()) {
       setError("Please enter your full name.");
@@ -102,9 +131,27 @@ function Auth({ onLogin }) {
     event.preventDefault();
     setError("");
 
-    // If registering and OTP has not been sent yet
-    if (isRegister && !otpSent) {
-      await handleSendRegistrationOtp();
+    // If registering - standard flow is email verification
+    if (isRegister) {
+      if (!otpSent) {
+        await handleSendRegistrationOtp();
+        return;
+      }
+
+      if (!otp || otp.length < 6) {
+        setError("Please enter the 6-digit verification code sent to your email.");
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const data = await registerUser(name, email, password, otp);
+        onLogin(data.user);
+      } catch (err) {
+        setError(err.message || "Verification failed");
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -114,20 +161,12 @@ function Auth({ onLogin }) {
       return;
     }
 
-    // Verification / submission step
+    // Verification / password login step
     setLoading(true);
 
     try {
       let data;
-
-      if (isRegister) {
-        if (!otp || otp.length < 6) {
-          setError("Please enter the 6-digit verification code sent to your email.");
-          setLoading(false);
-          return;
-        }
-        data = await registerUser(name, email, password, otp);
-      } else if (useOtp) {
+      if (useOtp) {
         data = await verifyOtp(email, otp);
       } else {
         data = await loginUser(email, password);
@@ -149,6 +188,7 @@ function Auth({ onLogin }) {
     setEmail("");
     setPassword("");
     setOtp("");
+    setUseOtp(false);
     setOtpSent(false);
     setShowPassword(false);
     setCooldown(0);
@@ -216,6 +256,18 @@ function Auth({ onLogin }) {
             <span className="error-alert-icon" aria-hidden="true">⚠️</span>
             <div className="error-alert-content">
               <span>{error}</span>
+              {isRegister && (
+                <div style={{ marginTop: "8px" }}>
+                  <button
+                    type="button"
+                    className="auth-link-btn"
+                    style={{ fontWeight: 600, textDecoration: "underline", color: "#4f46e5" }}
+                    onClick={handleDirectRegister}
+                  >
+                    ⚡ Create Account directly with Password (skip email verification) →
+                  </button>
+                </div>
+              )}
               {(error.toLowerCase().includes("create an account") || error.toLowerCase().includes("no account")) && !isRegister && (
                 <div style={{ marginTop: "6px" }}>
                   <button
@@ -386,10 +438,19 @@ function Auth({ onLogin }) {
                 <button
                   type="button"
                   className="auth-link-btn"
+                  style={{ color: "#4f46e5", fontWeight: 650 }}
+                  onClick={handleDirectRegister}
+                >
+                  ⚡ Skip code & Register
+                </button>
+
+                <button
+                  type="button"
+                  className="auth-link-btn"
                   disabled={cooldown > 0 || loading}
                   onClick={handleSendRegistrationOtp}
                 >
-                  {cooldown > 0 ? `Resend code (${cooldown}s)` : "Resend code"}
+                  {cooldown > 0 ? `Resend (${cooldown}s)` : "Resend code"}
                 </button>
               </div>
             </div>
@@ -557,7 +618,16 @@ function Auth({ onLogin }) {
           </button>
         </form>
 
-        {!isRegister && (
+        {isRegister ? (
+          <button
+            type="button"
+            className="auth-mode-switch"
+            onClick={handleDirectRegister}
+            title="Create account immediately using your password without email verification"
+          >
+            ⚡ Or create account directly with password
+          </button>
+        ) : (
           <button
             type="button"
             className="auth-mode-switch"

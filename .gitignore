@@ -21,9 +21,6 @@ docker_build_log.txt
 # Environment files
 backend/.env
 
-# Data (any depth - covers both root-level and backend-level paths)
-**/data/documents/*
-**/data/processed/*
-!**/data/documents/.gitkeep
-!**/data/processed/.gitkeep
-docker_build_log.txt
+# Local shims
+powershell.bat
+powershell.cmd

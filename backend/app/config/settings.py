@@ -45,8 +45,12 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
+    # Email / OTP Settings
     OTP_EXPIRE_MINUTES: int = 10
     OTP_REQUEST_COOLDOWN_SECONDS: int = 60
+    RESEND_API_KEY: str = ""
+    RESEND_FROM_EMAIL: str = ""
+    SENDGRID_API_KEY: str = ""
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USERNAME: str = ""
@@ -93,9 +97,27 @@ class Settings(BaseSettings):
         return (self.SMTP_FROM_EMAIL.strip() or self.SMTP_USERNAME.strip())
 
     @property
+    def effective_resend_from_email(self) -> str:
+        """Returns configured Resend from email, or defaults to onboarding@resend.dev."""
+        if self.RESEND_FROM_EMAIL.strip():
+            return self.RESEND_FROM_EMAIL.strip()
+        if self.SMTP_FROM_EMAIL.strip() and "@" in self.SMTP_FROM_EMAIL and "gmail.com" not in self.SMTP_FROM_EMAIL.lower():
+            return self.SMTP_FROM_EMAIL.strip()
+        return "AgentIQ <onboarding@resend.dev>"
+
+    @property
     def is_smtp_configured(self) -> bool:
-        """Returns True if minimum required SMTP settings are present."""
-        return bool(self.SMTP_HOST.strip() and (self.SMTP_FROM_EMAIL.strip() or self.SMTP_USERNAME.strip()))
+        """Returns True if minimum required email settings (Resend API or SMTP) are present."""
+        return bool(self.RESEND_API_KEY.strip() or (self.SMTP_HOST.strip() and (self.SMTP_FROM_EMAIL.strip() or self.SMTP_USERNAME.strip())))
+
+    @property
+    def active_email_provider(self) -> str:
+        """Identifies which email delivery backend is active."""
+        if self.RESEND_API_KEY.strip():
+            return "resend_https"
+        if self.SMTP_HOST.strip():
+            return "smtp"
+        return "mock"
 
     @property
     def is_llm_configured(self) -> bool:

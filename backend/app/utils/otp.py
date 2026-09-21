@@ -1,10 +1,13 @@
 import hashlib
+import json
 import logging
 import random
 import secrets
 import smtplib
 import socket
 import time
+import urllib.error
+import urllib.request
 from email.message import EmailMessage
 from email.utils import formataddr
 
@@ -47,6 +50,61 @@ def _mask_email(email: str) -> str:
     else:
         masked_local = local[0] + "*" * (len(local) - 2) + local[-1]
     return f"{masked_local}@{domain}"
+
+
+def _send_via_resend(from_email: str, to_email: str, subject: str, html_content: str, text_content: str) -> None:
+    api_key = settings.RESEND_API_KEY.strip()
+    if not api_key:
+        raise OTPConfigError("RESEND_API_KEY is not configured")
+
+    sender = settings.effective_resend_from_email
+    payload = {
+        "from": sender,
+        "to": [to_email],
+        "subject": subject,
+        "html": html_content,
+        "text": text_content,
+    }
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "AgentIQ/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=settings.SMTP_TIMEOUT_SECONDS) as resp:
+            resp_bytes = resp.read()
+            if resp.status >= 400:
+                raise OTPDeliveryError(f"Resend HTTP API returned status {resp.status}")
+    except urllib.error.HTTPError as exc:
+        raw_err = exc.read().decode("utf-8", errors="ignore")
+        err_msg = ""
+        try:
+            parsed = json.loads(raw_err)
+            err_msg = parsed.get("message") or parsed.get("error") or raw_err
+        except Exception:
+            err_msg = raw_err[:200]
+
+        logger.error("Resend API error (HTTP %s): %s", exc.code, err_msg)
+        if exc.code in (401, 403):
+            raise OTPAuthError("Invalid or unauthorized Resend API Key. Please verify RESEND_API_KEY in Render.") from exc
+        if exc.code == 422:
+            raise OTPDeliveryError(f"Resend delivery failed: {err_msg}") from exc
+        if exc.code == 429:
+            raise OTPTransientError("Email provider rate limit reached. Please wait a moment and try again.") from exc
+        raise OTPDeliveryError(f"Resend email delivery failed (status {exc.code})") from exc
+    except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError, OSError) as exc:
+        logger.error("Resend connection error: %s", type(exc).__name__)
+        raise OTPTransientError("Could not connect to email delivery service. Please try again.") from exc
+    except OTPDeliveryError:
+        raise
+    except Exception as exc:
+        logger.error("Unexpected error during Resend delivery: %s", type(exc).__name__)
+        raise OTPDeliveryError(f"Email delivery failed: {type(exc).__name__}") from exc
 
 
 def _send_single_attempt(message: EmailMessage, host: str, port: int, use_ssl: bool) -> None:
@@ -156,6 +214,18 @@ def send_otp_email(email: str, code: str, purpose: str = "login") -> None:
 """
     message.add_alternative(html_content, subtype="html")
 
+    if settings.RESEND_API_KEY.strip():
+        logger.info("Sending OTP email to %s via Resend HTTPS API (port 443)", masked)
+        _send_via_resend(
+            from_email=from_email,
+            to_email=email,
+            subject=subject,
+            html_content=html_content,
+            text_content=text_content,
+        )
+        logger.info("Successfully sent OTP email to %s via Resend API", masked)
+        return
+
     host = settings.SMTP_HOST.strip()
     primary_port = settings.SMTP_PORT
     primary_ssl = settings.SMTP_USE_SSL or primary_port == 465
@@ -223,6 +293,6 @@ def send_otp_email(email: str, code: str, purpose: str = "login") -> None:
             raise OTPDeliveryError(f"Email delivery failed: {type(exc).__name__}") from exc
 
     logger.error("All %d attempts to send OTP email to %s failed", max_attempts, masked)
-    raise OTPTransientError("Email service is temporarily unavailable. Please try again.") from last_error
+    raise OTPTransientError("Email service is temporarily unavailable (outbound SMTP is blocked on cloud container). Please sign in/register with password, or set RESEND_API_KEY.") from last_error
 
 
