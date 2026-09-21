@@ -87,7 +87,7 @@ def researcher_node(state: AgentState) -> dict:
         return task, run_researcher(task)
 
     all_web_results = []
-    max_workers = min(len(tasks), 5)
+    max_workers = min(len(tasks), 2)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_task = {

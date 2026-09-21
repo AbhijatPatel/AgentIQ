@@ -150,7 +150,7 @@ async def _event_stream(research_id: str):
             yield f"data: {json.dumps({'event': 'done', 'status': status})}\n\n"
             return
 
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1.0)
 
 
 @router.get("/research/{research_id}/stream")
