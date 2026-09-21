@@ -16,7 +16,19 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+engine_kwargs = {
+    "pool_pre_ping": True,
+}
+
+if settings.DATABASE_URL.startswith("postgresql"):
+    engine_kwargs.update({
+        "pool_size": 10,
+        "max_overflow": 20,
+        "pool_recycle": 300,
+        "connect_args": {"connect_timeout": 10},
+    })
+
+engine = create_engine(settings.DATABASE_URL, **engine_kwargs)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

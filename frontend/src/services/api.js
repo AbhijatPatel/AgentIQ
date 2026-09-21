@@ -130,15 +130,15 @@ async function apiFetch(path, options = {}) {
     }
   }
 
-  // All retries exhausted – throw a human-readable error
+  // All retries exhausted – throw a human-readable error with backend context
   if (lastError?.name === "AbortError") {
     throw new Error(
-      "The server took too long to respond. Please check that the backend is running and try again."
+      "The server request timed out. If the backend is waking up from a cold start, please retry in a moment."
     );
   }
   if (lastError?.name === "TypeError") {
     throw new Error(
-      "Could not connect to the backend server. Please try again in a moment."
+      `Network error: Could not reach backend server (${lastError.message || "Failed to fetch"}). Please check backend status and retry.`
     );
   }
   throw new Error(
@@ -346,13 +346,17 @@ export async function getResearchStatus(researchId) {
     },
   });
 
+  const data = await parseJSON(response);
+
   if (!response.ok) {
     throw new Error(
-      `Failed to get research status (${response.status})`
+      data.detail ||
+        data.message ||
+        `Failed to get research status (${response.status})`
     );
   }
 
-  return response.json();
+  return data;
 }
 
 /**

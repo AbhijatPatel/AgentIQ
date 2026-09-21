@@ -339,6 +339,12 @@ def video_search(
         response.raise_for_status()
 
     except requests.exceptions.HTTPError as exc:
+        if response.status_code in (401, 403):
+            logger.warning(
+                f"Pexels API authentication error ({response.status_code}); skipping video search."
+            )
+            return []
+
         if response.status_code == 429:
             logger.error(
                 f"Pexels rate limit exceeded: {exc}"

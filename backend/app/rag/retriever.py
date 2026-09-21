@@ -8,6 +8,8 @@ Researcher agent (Module 8) needs to ground its claims.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from app.rag.vectorstore import DEFAULT_COLLECTION_NAME, DEFAULT_PERSIST_DIR, get_vectorstore
 from app.utils.logger import get_logger
 
@@ -34,9 +36,13 @@ def retrieve(
         logger.warning("Empty query passed to retrieve(); returning no results.")
         return []
 
-    store = get_vectorstore(persist_directory, collection_name)
+    persist_path = Path(persist_directory)
+    if not persist_path.exists() or not any(persist_path.iterdir()):
+        logger.debug("Vector store directory is empty or does not exist; skipping RAG retrieval.")
+        return []
 
     try:
+        store = get_vectorstore(persist_directory, collection_name)
         results = store.similarity_search_with_score(query, k=top_k)
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Retrieval failed: {exc}")
