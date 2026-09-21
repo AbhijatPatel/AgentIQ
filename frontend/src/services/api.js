@@ -9,7 +9,11 @@
  * VITE_API_BASE to the absolute backend URL.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || "/api";
+const rawBase =
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_API_BASE ||
+  "/api";
+const API_BASE = rawBase.replace(/\/+$/, "");
 
 // ─── Retry / resilience config ──────────────────────────────────────
 const MAX_RETRIES = 3;
@@ -344,8 +348,12 @@ export function getResearchStreamUrl(researchId) {
 /**
  * List recent research sessions for history view.
  */
-export async function getResearchHistory(limit = 50) {
-  const response = await apiFetch(`/research?limit=${limit}`, {
+export async function getResearchHistory(limit = 50, search = "") {
+  let path = `/research?limit=${limit}`;
+  if (search && search.trim()) {
+    path += `&search=${encodeURIComponent(search.trim())}`;
+  }
+  const response = await apiFetch(path, {
     headers: {
       ...getAuthHeaders(),
     },
@@ -353,6 +361,24 @@ export async function getResearchHistory(limit = 50) {
 
   if (!response.ok) {
     throw new Error(`Failed to load research history (${response.status})`);
+  }
+
+  return parseJSON(response);
+}
+
+/**
+ * Delete a research session.
+ */
+export async function deleteResearchSession(researchId) {
+  const response = await apiFetch(`/research/${researchId}`, {
+    method: "DELETE",
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete research session (${response.status})`);
   }
 
   return parseJSON(response);

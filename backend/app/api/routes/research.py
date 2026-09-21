@@ -6,8 +6,11 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Depends
 from fastapi import Request as FastAPIRequest
 from fastapi.responses import StreamingResponse
 
+from typing import Optional
+
 from app.api.dependencies import (
     create_session,
+    delete_session,
     get_session,
     update_session,
     get_current_user,
@@ -64,10 +67,19 @@ def _run_research_pipeline(research_id: str, user_goal: str) -> None:
 
 @router.get("/research", response_model=ResearchHistoryResponse)
 def get_research_history(
-    limit: int = Query(default=20, ge=1, le=100, description="Maximum number of research sessions to return.")
+    limit: int = Query(default=20, ge=1, le=100, description="Maximum number of research sessions to return."),
+    search: Optional[str] = Query(default=None, description="Search term to filter sessions by user goal."),
 ):
-    sessions = list_sessions(limit=limit)
+    sessions = list_sessions(limit=limit, search=search)
     return ResearchHistoryResponse(sessions=sessions)
+
+
+@router.delete("/research/{research_id}")
+def delete_research_session(research_id: str):
+    success = delete_session(research_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Research session not found")
+    return {"status": "deleted", "research_id": research_id}
 
 
 @router.post("/research", response_model=ResearchStartedResponse, status_code=202)

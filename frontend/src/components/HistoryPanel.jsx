@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-
-const API_BASE = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE || "/api";
+import { getResearchHistory, deleteResearchSession } from "../services/api";
 
 const STATUS_COLORS = {
   completed: { bg: "#dcfce7", color: "#16a34a" },
@@ -31,16 +30,7 @@ export default function HistoryPanel({ onSelectSession, refreshKey }) {
     async function loadHistory() {
       setLoading(true);
       try {
-        const token = localStorage.getItem("agentiq_token");
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
-        const url = new URL(`${API_BASE}/research`);
-        url.searchParams.set("limit", "20");
-        if (searchTerm.trim()) {
-          url.searchParams.set("search", searchTerm.trim());
-        }
-        const res = await fetch(url.toString(), { headers });
-        if (!res.ok) throw new Error("Failed to load history");
-        const data = await res.json();
+        const data = await getResearchHistory(20, searchTerm);
         if (!cancelled) setSessions(data.sessions || []);
       } catch {
         if (!cancelled) setSessions([]);
@@ -60,15 +50,8 @@ export default function HistoryPanel({ onSelectSession, refreshKey }) {
     if (!window.confirm("Are you sure you want to delete this research session?")) return;
 
     try {
-      const token = localStorage.getItem("agentiq_token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const res = await fetch(`${API_BASE}/research/${researchId}`, {
-        method: "DELETE",
-        headers,
-      });
-      if (res.ok) {
-        setSessions((prev) => prev.filter((s) => s.research_id !== researchId));
-      }
+      await deleteResearchSession(researchId);
+      setSessions((prev) => prev.filter((s) => s.research_id !== researchId));
     } catch (err) {
       console.error("Failed to delete session", err);
     }
