@@ -9,11 +9,25 @@
  * VITE_API_BASE to the absolute backend URL.
  */
 
-const rawBase =
-  import.meta.env.VITE_API_URL ||
-  import.meta.env.VITE_API_BASE ||
-  "/api";
-const API_BASE = rawBase.replace(/\/+$/, "");
+function getApiBase() {
+  const envUrl = (
+    import.meta.env.VITE_API_URL ||
+    import.meta.env.VITE_API_BASE ||
+    ""
+  ).trim();
+
+  if (!envUrl) {
+    return "/api";
+  }
+
+  const cleanUrl = envUrl.replace(/\/+$/, "");
+  if (cleanUrl.endsWith("/api")) {
+    return cleanUrl;
+  }
+  return `${cleanUrl}/api`;
+}
+
+const API_BASE = getApiBase();
 
 // ─── Retry / resilience config ──────────────────────────────────────
 const MAX_RETRIES = 3;
