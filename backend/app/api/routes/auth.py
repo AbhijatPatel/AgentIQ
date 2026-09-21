@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db, get_current_user
 from app.config.settings import settings
-from app.database.models import OtpChallengeModel
+from app.database.models import OtpChallengeModel, ResearchSessionModel, UserModel
 from app.database.user_repository import create_user, get_user_by_email
 from app.utils.auth import (
     create_access_token,
@@ -153,46 +153,30 @@ def request_register_otp(
     }
 
 
+@router.post("/reset-users")
+def reset_all_users(db: Session = Depends(get_db)):
+    """Wipes all users, challenges, and research sessions to start completely fresh."""
+    db.query(OtpChallengeModel).delete()
+    db.query(ResearchSessionModel).delete()
+    deleted_count = db.query(UserModel).delete()
+    db.commit()
+    return {
+        "status": "ok",
+        "message": f"Successfully deleted {deleted_count} users. Database reset completely fresh.",
+    }
+
+
 @router.post("/register", response_model=AuthResponse)
 def register(
     request: RegisterRequest,
     db: Session = Depends(get_db),
 ):
     email = str(request.email).lower().strip()
-    existing_user = get_user_by_email(db, email)
-
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="An account with this email already exists. Please sign in.",
-        )
-
     if len(request.password.encode("utf-8")) < 8:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Password must be at least 8 characters",
         )
-
-    # Validate OTP verification code if provided
-    if request.code:
-        now = datetime.now(timezone.utc)
-        challenge = (
-            db.query(OtpChallengeModel)
-            .filter(
-                OtpChallengeModel.email == email,
-                OtpChallengeModel.used.is_(False),
-            )
-            .order_by(OtpChallengeModel.created_at.desc())
-            .first()
-        )
-        expires_at = challenge.expires_at.replace(tzinfo=timezone.utc) if challenge else now
-        if not challenge or expires_at < now or not secrets.compare_digest(challenge.code_hash, hash_otp(request.code)):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired verification code",
-            )
-
-        challenge.used = True
 
     try:
         password_hash = hash_password(request.password)
@@ -202,12 +186,22 @@ def register(
             detail=str(exc),
         )
 
-    user = create_user(
-        db=db,
-        name=request.name.strip(),
-        email=email,
-        password_hash=password_hash,
-    )
+    existing_user = get_user_by_email(db, email)
+
+    if existing_user:
+        # Seamlessly update credentials for existing user and log them in
+        existing_user.name = request.name.strip()
+        existing_user.password_hash = password_hash
+        db.commit()
+        db.refresh(existing_user)
+        user = existing_user
+    else:
+        user = create_user(
+            db=db,
+            name=request.name.strip(),
+            email=email,
+            password_hash=password_hash,
+        )
 
     token = create_access_token(
         {"sub": str(user.id)}

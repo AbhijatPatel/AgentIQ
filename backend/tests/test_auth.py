@@ -73,7 +73,7 @@ def test_register_user_success(client):
     assert "password_hash" not in data["user"]
 
 
-def test_register_rejects_duplicate_email(client):
+def test_register_updates_existing_user(client):
     user_data = {
         "name": "Test User",
         "email": "duplicate@example.com",
@@ -89,12 +89,39 @@ def test_register_rejects_duplicate_email(client):
 
     second_response = client.post(
         "/api/auth/register",
-        json=user_data,
+        json={
+            "name": "Updated User",
+            "email": "duplicate@example.com",
+            "password": "NewPassword123",
+        },
     )
 
-    assert second_response.status_code == 409
-    detail = second_response.json().get("detail") or second_response.json().get("message")
-    assert "already exists" in detail or detail == "Email already registered"
+    assert second_response.status_code == 200
+    assert second_response.json()["user"]["name"] == "Updated User"
+
+
+def test_reset_all_users(client):
+    client.post(
+        "/api/auth/register",
+        json={
+            "name": "Reset User",
+            "email": "reset@example.com",
+            "password": "Test@12345",
+        },
+    )
+
+    reset_resp = client.post("/api/auth/reset-users")
+    assert reset_resp.status_code == 200
+    assert reset_resp.json()["status"] == "ok"
+
+    login_resp = client.post(
+        "/api/auth/login",
+        json={
+            "email": "reset@example.com",
+            "password": "Test@12345",
+        },
+    )
+    assert login_resp.status_code == 401
 
 
 def test_register_rejects_short_password(client):
