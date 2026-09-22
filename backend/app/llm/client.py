@@ -82,7 +82,6 @@ class LLMClient:
         self._client = OpenAI(**client_kwargs)
         self._base_url = base_url
         
-        # Provider-aware model normalization
         is_groq = "groq" in base_url.lower() or api_key.startswith("gsk_")
         is_openai = "api.openai.com" in base_url.lower() and not is_groq
 
@@ -90,18 +89,17 @@ class LLMClient:
         fallback_model = (settings.LLM_FALLBACK_MODEL or "").strip()
 
         if is_groq:
-            if not model or model.startswith("openai/"):
-                model = "llama-3.3-70b-versatile"
-            if not fallback_model or fallback_model.startswith("openai/"):
-                fallback_model = "llama-3.1-8b-instant"
+            self._model = model or "openai/gpt-oss-120b"
+            self._fallback_model = fallback_model or "openai/gpt-oss-20b"
         elif is_openai:
-            if not model or "llama" in model.lower() or model.startswith("openai/"):
-                model = "gpt-4o-mini"
-            if not fallback_model or "llama" in fallback_model.lower() or fallback_model.startswith("openai/"):
-                fallback_model = "gpt-3.5-turbo"
+            self._model = model or "gpt-4o-mini"
+            self._fallback_model = fallback_model or "gpt-3.5-turbo"
+        else:
+            self._model = model or "openai/gpt-oss-120b"
+            self._fallback_model = fallback_model or "openai/gpt-oss-20b"
 
-        self._model = model or "llama-3.3-70b-versatile"
-        self._fallback_model = fallback_model or "llama-3.1-8b-instant"
+        self._is_groq = is_groq
+        self._is_openai = is_openai
         self._temperature = settings.LLM_TEMPERATURE
 
         provider_name = "Groq" if is_groq else ("OpenAI" if is_openai else "Custom/OpenRouter")
@@ -198,14 +196,30 @@ class LLMClient:
         )
 
         requested_model = model or self._model
-        models_to_try = [requested_model]
+        candidates = [requested_model]
+        if self._fallback_model:
+            candidates.append(self._fallback_model)
+        if self._is_groq:
+            candidates.extend([
+                "openai/gpt-oss-120b",
+                "openai/gpt-oss-20b",
+                "gpt-oss-120b",
+                "gpt-oss-20b",
+                "llama-3.3-70b-versatile",
+                "llama-3.1-8b-instant",
+                "llama3-70b-8192",
+                "llama3-8b-8192",
+                "mixtral-8x7b-32768",
+            ])
+        elif self._is_openai:
+            candidates.extend(["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"])
 
-        if (
-            requested_model == self._model
-            and self._fallback_model
-            and self._fallback_model != self._model
-        ):
-            models_to_try.append(self._fallback_model)
+        seen = set()
+        models_to_try = []
+        for m in candidates:
+            if m and m not in seen:
+                seen.add(m)
+                models_to_try.append(m)
 
         last_error: Exception | None = None
 
