@@ -110,6 +110,15 @@ app.add_middleware(
 # ---------------------------------------------------------
 
 @app.get("/")
+def root_info() -> dict[str, str]:
+    return {
+        "status": "ok",
+        "app": "AgentIQ Backend API",
+        "frontend_url": "https://agent-iq-mfsi.vercel.app",
+        "message": "Backend API is running. Open the frontend URL in your browser to use the application."
+    }
+
+
 @app.get("/health")
 def root_health() -> dict[str, str]:
     return {"status": "ok"}
