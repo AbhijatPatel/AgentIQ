@@ -39,6 +39,8 @@ def health_diagnostics(db: Session = Depends(get_db)) -> dict[str, Any]:
             db_status = "unreachable"
 
     # LLM diagnostics
+    from app.llm.client import llm_client
+
     llm_key = settings.effective_llm_api_key
     provider = "unconfigured"
     if llm_key:
@@ -60,6 +62,7 @@ def health_diagnostics(db: Session = Depends(get_db)) -> dict[str, Any]:
         "status": "ok",
         "app": settings.APP_NAME,
         "environment": settings.ENVIRONMENT,
+        "version": "v1.2.0-pipeline-fix",
         "integrations": {
             "database": {
                 "status": db_status,
@@ -67,8 +70,10 @@ def health_diagnostics(db: Session = Depends(get_db)) -> dict[str, Any]:
             "llm": {
                 "configured": bool(llm_key),
                 "provider": provider,
-                "model": settings.LLM_MODEL,
-                "fallback_model": settings.LLM_FALLBACK_MODEL,
+                "configured_model": settings.LLM_MODEL,
+                "configured_fallback_model": settings.LLM_FALLBACK_MODEL,
+                "effective_model": getattr(llm_client, "_model", settings.LLM_MODEL),
+                "effective_fallback_model": getattr(llm_client, "_fallback_model", settings.LLM_FALLBACK_MODEL),
             },
             "email": {
                 "configured": settings.is_smtp_configured,
