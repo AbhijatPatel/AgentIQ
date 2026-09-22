@@ -1,18 +1,17 @@
 """
 Repository layer for research sessions.
 
-This has the EXACT SAME function names/signatures as the in-memory
-version from Module 14 (app/api/dependencies.py) - create_session,
-update_session, get_session - so the API routes don't need to change.
-Only the storage mechanism underneath changes: Postgres instead of a
-Python dict.
+Provides strict multi-tenant isolation, user-scoped querying,
+session creation, status updating, renaming, deletion, and reconciliation.
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.database.connection import SessionLocal
@@ -23,11 +22,13 @@ logger = get_logger(__name__)
 
 
 def _model_to_dict(model: ResearchSessionModel) -> dict:
-    """Convert a SQLAlchemy model into the same dict shape the routes expect."""
+    """Convert a SQLAlchemy model into the dict shape the routes and graph expect."""
     return {
         "research_id": model.research_id,
+        "title": model.title,
         "status": model.status,
         "user_goal": model.user_goal,
+        "user_id": model.user_id,
         "tasks": model.tasks or [],
         "evidence": model.evidence or [],
         "images": model.images or [],
@@ -39,11 +40,18 @@ def _model_to_dict(model: ResearchSessionModel) -> dict:
         "critique": model.critique,
         "errors": model.errors or [],
         "agent_events": model.agent_events or [],
+        "created_at": model.created_at.isoformat() if model.created_at else None,
+        "updated_at": model.updated_at.isoformat() if model.updated_at else None,
     }
 
 
-def create_session(user_goal: str, user_id: Optional[str] = None, db: Optional[Session] = None) -> str:
-    """Create a new research session in the database and return its ID."""
+def create_session(
+    user_goal: str,
+    user_id: Optional[str] = None,
+    title: Optional[str] = None,
+    db: Optional[Session] = None,
+) -> str:
+    """Create a new research session assigned to an authenticated user_id."""
     research_id = str(uuid.uuid4())
     owns_session = db is None
     db = db or SessionLocal()
@@ -51,8 +59,9 @@ def create_session(user_goal: str, user_id: Optional[str] = None, db: Optional[S
     try:
         record = ResearchSessionModel(
             research_id=research_id,
+            title=title or (user_goal[:60] + "..." if len(user_goal) > 60 else user_goal),
             user_goal=user_goal,
-            user_id=user_id,
+            user_id=str(user_id) if user_id is not None else None,
             status="running",
             tasks=[],
             errors=[],
@@ -68,7 +77,7 @@ def create_session(user_goal: str, user_id: Optional[str] = None, db: Optional[S
 
 
 def update_session(research_id: str, db: Optional[Session] = None, **updates) -> None:
-    """Merge updates into an existing session row."""
+    """Merge state updates into an existing session row."""
     owns_session = db is None
     db = db or SessionLocal()
 
@@ -85,8 +94,12 @@ def update_session(research_id: str, db: Optional[Session] = None, **updates) ->
                 value = [e.model_dump() if hasattr(e, "model_dump") else e for e in value]
             if key == "sources" and value:
                 value = [s.model_dump() if hasattr(s, "model_dump") else s for s in value]
-            if key == "final_report" and value and hasattr(value, "model_dump"):
-                value = value.model_dump()
+            if key == "final_report" and value:
+                if hasattr(value, "model_dump"):
+                    value = value.model_dump()
+                # If session has no custom title yet, sync with final_report title
+                if not record.title and isinstance(value, dict) and value.get("title"):
+                    record.title = value["title"]
             if key == "critique" and value and hasattr(value, "model_dump"):
                 value = value.model_dump()
             if key == "agent_events" and value:
@@ -99,7 +112,33 @@ def update_session(research_id: str, db: Optional[Session] = None, **updates) ->
             db.close()
 
 
-from datetime import datetime, timedelta, timezone
+def rename_session(
+    research_id: str,
+    new_title: str,
+    user_id: Optional[str] = None,
+    db: Optional[Session] = None,
+) -> bool:
+    """Rename a research session, strictly verifying user ownership."""
+    owns_session = db is None
+    db = db or SessionLocal()
+
+    try:
+        query = db.query(ResearchSessionModel).filter(ResearchSessionModel.research_id == research_id)
+        if user_id is not None:
+            query = query.filter(ResearchSessionModel.user_id == str(user_id))
+
+        record = query.first()
+        if not record:
+            return False
+
+        clean_title = new_title.strip() if new_title else record.user_goal[:60]
+        record.title = clean_title
+        db.commit()
+        logger.info(f"Renamed research session {research_id} to {clean_title!r}")
+        return True
+    finally:
+        if owns_session:
+            db.close()
 
 
 def reconcile_stale_sessions(
@@ -107,9 +146,8 @@ def reconcile_stale_sessions(
     db: Optional[Session] = None,
 ) -> int:
     """
-    Find research sessions that have been in 'running' status longer than max_age_minutes,
-    and transition them to 'failed' with an explanatory error.
-    This prevents crashed, interrupted, or orphaned jobs from staying 'running' forever.
+    Find research sessions in 'running' status longer than max_age_minutes
+    and transition them to 'failed'.
     """
     owns_session = db is None
     db = db or SessionLocal()
@@ -153,20 +191,28 @@ def reconcile_stale_sessions(
             db.close()
 
 
-def get_session(research_id: str, user_id: Optional[str] = None, db: Optional[Session] = None) -> Optional[dict]:
-    """Retrieve a session by ID as a dict, or None if it doesn't exist."""
+def get_session(
+    research_id: str,
+    user_id: Optional[str] = None,
+    db: Optional[Session] = None,
+) -> Optional[dict]:
+    """
+    Retrieve a session by ID as a dict.
+    Strictly verifies ownership if user_id is provided.
+    """
     owns_session = db is None
     db = db or SessionLocal()
 
     try:
         query = db.query(ResearchSessionModel).filter(ResearchSessionModel.research_id == research_id)
-        if user_id:
-            query = query.filter((ResearchSessionModel.user_id == user_id) | (ResearchSessionModel.user_id.is_(None)))
+        if user_id is not None:
+            query = query.filter(ResearchSessionModel.user_id == str(user_id))
+
         record = query.first()
         if record is None:
             return None
 
-        # Check if single record is stale
+        # Reconcile if single running record has timed out
         if record.status == "running":
             rec_time = record.updated_at or record.created_at
             if rec_time:
@@ -188,39 +234,49 @@ def get_session(research_id: str, user_id: Optional[str] = None, db: Optional[Se
             db.close()
 
 
-def delete_session(research_id: str, user_id: Optional[str] = None, db: Optional[Session] = None) -> bool:
-    """Delete a research session by ID, returning True if deleted."""
+def delete_session(
+    research_id: str,
+    user_id: Optional[str] = None,
+    db: Optional[Session] = None,
+) -> bool:
+    """Delete a research session by ID, strictly verifying ownership."""
     owns_session = db is None
     db = db or SessionLocal()
 
     try:
         query = db.query(ResearchSessionModel).filter(ResearchSessionModel.research_id == research_id)
-        if user_id:
-            query = query.filter((ResearchSessionModel.user_id == user_id) | (ResearchSessionModel.user_id.is_(None)))
+        if user_id is not None:
+            query = query.filter(ResearchSessionModel.user_id == str(user_id))
+
         record = query.first()
         if not record:
             return False
+
         db.delete(record)
         db.commit()
-        logger.info(f"Deleted research session {research_id}")
+        logger.info(f"Deleted research session {research_id} for user {user_id}")
         return True
     finally:
         if owns_session:
             db.close()
 
 
-def clear_all_sessions(user_id: Optional[str] = None, db: Optional[Session] = None) -> int:
-    """Delete all research sessions, optionally scoped to a user_id. Returns number deleted."""
+def clear_all_sessions(
+    user_id: Optional[str] = None,
+    db: Optional[Session] = None,
+) -> int:
+    """Delete all research sessions belonging to the user."""
     owns_session = db is None
     db = db or SessionLocal()
 
     try:
         query = db.query(ResearchSessionModel)
-        if user_id:
-            query = query.filter((ResearchSessionModel.user_id == user_id) | (ResearchSessionModel.user_id.is_(None)))
+        if user_id is not None:
+            query = query.filter(ResearchSessionModel.user_id == str(user_id))
+
         count = query.delete(synchronize_session=False)
         db.commit()
-        logger.info(f"Cleared {count} research session(s) from database.")
+        logger.info(f"Cleared {count} research session(s) for user {user_id}.")
         return count
     finally:
         if owns_session:
@@ -228,35 +284,42 @@ def clear_all_sessions(user_id: Optional[str] = None, db: Optional[Session] = No
 
 
 def list_sessions(
-    limit: int = 20,
+    limit: int = 50,
     user_id: Optional[str] = None,
     search: Optional[str] = None,
     db: Optional[Session] = None,
 ) -> list[dict]:
     """
-    Return recent research sessions, newest first, with optional user_id and text search filtering.
+    Return recent research sessions, newest first, scoped strictly to user_id.
     """
     owns_session = db is None
     db = db or SessionLocal()
 
     try:
-        # Reconcile any stale running sessions first
+        # Reconcile stale running sessions
         reconcile_stale_sessions(max_age_minutes=10, db=db)
 
         query = db.query(
             ResearchSessionModel.research_id,
+            ResearchSessionModel.title,
             ResearchSessionModel.user_goal,
             ResearchSessionModel.status,
             ResearchSessionModel.created_at,
+            ResearchSessionModel.updated_at,
             ResearchSessionModel.final_report,
         )
 
-        if user_id:
-            query = query.filter((ResearchSessionModel.user_id == user_id) | (ResearchSessionModel.user_id.is_(None)))
+        if user_id is not None:
+            query = query.filter(ResearchSessionModel.user_id == str(user_id))
 
         if search and search.strip():
             pattern = f"%{search.strip()}%"
-            query = query.filter(ResearchSessionModel.user_goal.ilike(pattern))
+            query = query.filter(
+                or_(
+                    ResearchSessionModel.user_goal.ilike(pattern),
+                    ResearchSessionModel.title.ilike(pattern),
+                )
+            )
 
         records = (
             query.order_by(ResearchSessionModel.created_at.desc())
@@ -267,11 +330,21 @@ def list_sessions(
         return [
             {
                 "research_id": record.research_id,
+                "title": (
+                    record.title
+                    or ((record.final_report or {}).get("title") if record.final_report else None)
+                    or record.user_goal
+                ),
                 "user_goal": record.user_goal,
                 "status": record.status,
                 "created_at": (
                     record.created_at.isoformat()
                     if record.created_at
+                    else None
+                ),
+                "updated_at": (
+                    record.updated_at.isoformat()
+                    if record.updated_at
                     else None
                 ),
                 "final_report_title": (

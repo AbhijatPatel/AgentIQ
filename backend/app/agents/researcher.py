@@ -247,15 +247,16 @@ def _run_web_search(task: Task) -> tuple[list[dict], float]:
 def run_researcher(
     task: Task,
     session_id: str = "",
+    user_id: str = "",
 ) -> tuple[list[Evidence], list[dict], list[dict], list[dict]]:
     total_start = time.perf_counter()
 
     logger.info(
         f"Researcher started for task {task.id}: "
-        f"{task.description!r} (session: {session_id or 'global'})"
+        f"{task.description!r} (user: {user_id or 'anon'}, session: {session_id or 'global'})"
     )
 
-    cached_result = research_cache.get(task.description, session_id=session_id)
+    cached_result = research_cache.get(task.description, session_id=session_id, user_id=user_id)
 
     if cached_result is not None:
         total_time = time.perf_counter() - total_start
@@ -522,10 +523,11 @@ def run_researcher(
         task.description,
         result,
         session_id=session_id,
+        user_id=user_id,
     )
 
     logger.info(
-        f"Researcher result cached for task {task.id} (session: {session_id or 'global'})"
+        f"Researcher result cached for task {task.id} (user: {user_id or 'anon'}, session: {session_id or 'global'})"
     )
 
     return result

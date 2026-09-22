@@ -139,8 +139,10 @@ class AgentState(TypedDict, total=False):
     exist until after the Planner node runs).
     """
 
-    # Input
+    # Input & Session Scope
     user_goal: str
+    session_id: str
+    user_id: str
 
     # Planner output
     tasks: list[Task]
@@ -166,9 +168,15 @@ class AgentState(TypedDict, total=False):
     errors: list[str]
 
 
-def create_initial_state(user_goal: str) -> AgentState:
+def create_initial_state(
+    user_goal: str,
+    session_id: str = "",
+    user_id: str = "",
+) -> AgentState:
     return AgentState(
         user_goal=user_goal,
+        session_id=session_id,
+        user_id=user_id,
         tasks=[],
         evidence=[],
         sources=[],

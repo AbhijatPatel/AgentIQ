@@ -20,23 +20,29 @@ class ResearchCache:
         self._lock = threading.Lock()
 
     @staticmethod
-    def make_key(task_description: str, session_id: str = "") -> str:
+    def make_key(task_description: str, session_id: str = "", user_id: str = "") -> str:
         """
-        Create a stable cache key from a research task description and optional session ID.
+        Create a stable cache key from a research task description, session ID, and user ID.
         """
         normalized = " ".join(task_description.lower().split())
+        prefix_parts = []
+        if user_id:
+            prefix_parts.append(f"u:{user_id.strip()}")
         if session_id:
-            normalized = f"{session_id.strip()}:{normalized}"
+            prefix_parts.append(f"s:{session_id.strip()}")
+
+        if prefix_parts:
+            normalized = f"{':'.join(prefix_parts)}:{normalized}"
 
         return hashlib.sha256(
             normalized.encode("utf-8")
         ).hexdigest()
 
-    def get(self, task_description: str, session_id: str = "") -> Any | None:
+    def get(self, task_description: str, session_id: str = "", user_id: str = "") -> Any | None:
         """
         Return cached result if present and not expired.
         """
-        key = self.make_key(task_description, session_id=session_id)
+        key = self.make_key(task_description, session_id=session_id, user_id=user_id)
 
         with self._lock:
             entry = self._cache.get(key)
@@ -52,11 +58,11 @@ class ResearchCache:
 
             return value
 
-    def set(self, task_description: str, value: Any, session_id: str = "") -> None:
+    def set(self, task_description: str, value: Any, session_id: str = "", user_id: str = "") -> None:
         """
         Store a research result in the cache.
         """
-        key = self.make_key(task_description, session_id=session_id)
+        key = self.make_key(task_description, session_id=session_id, user_id=user_id)
 
         with self._lock:
             self._cache[key] = (time.time(), value)

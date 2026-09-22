@@ -2,28 +2,36 @@
 Shared dependencies for the API layer.
 
 Includes:
-- Research session dependencies
-- JWT authentication dependency
+- Database session dependency
+- JWT authentication dependency (supporting Bearer headers and query token for SSE EventStreams)
 """
 
-from typing import Generator
+from __future__ import annotations
 
-from fastapi import Depends, HTTPException, status
+from typing import Generator, Optional
+
+from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database.connection import SessionLocal
-from app.database.repository import create_session, delete_session, get_session, list_sessions, update_session
+from app.database.repository import (
+    clear_all_sessions,
+    create_session,
+    delete_session,
+    get_session,
+    list_sessions,
+    rename_session,
+    update_session,
+)
 from app.database.user_repository import get_user_by_id
 from app.utils.auth import decode_access_token
 
-
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
-
     try:
         yield db
     finally:
@@ -31,10 +39,27 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    token_query: Optional[str] = Query(None, alias="token"),
     db: Session = Depends(get_db),
 ):
-    token = credentials.credentials
+    """
+    Authenticate the user via Bearer token in Authorization header,
+    or via ?token= query parameter (for browser EventSource SSE connections).
+    """
+    token = None
+    if credentials and credentials.credentials:
+        token = credentials.credentials
+    elif token_query:
+        token = token_query
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication credentials were not provided",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     payload = decode_access_token(token)
 
@@ -79,7 +104,9 @@ __all__ = [
     "create_session",
     "get_session",
     "update_session",
+    "rename_session",
     "delete_session",
+    "clear_all_sessions",
     "list_sessions",
     "get_db",
     "get_current_user",

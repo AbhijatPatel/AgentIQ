@@ -163,9 +163,11 @@ def test_list_sessions_returns_lightweight_history(db_session):
 
     assert set(first_session.keys()) == {
         "research_id",
+        "title",
         "user_goal",
         "status",
         "created_at",
+        "updated_at",
         "final_report_title",
     }
 

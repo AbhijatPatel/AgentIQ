@@ -19,4 +19,15 @@ class ResearchRequest(BaseModel):
         examples=[
             "Impact of generative AI on developer productivity"
         ],
+    )
+
+
+class RenameSessionRequest(BaseModel):
+    """Body for PATCH /api/research/{research_id}."""
+
+    title: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="The new title for the research session.",
     )

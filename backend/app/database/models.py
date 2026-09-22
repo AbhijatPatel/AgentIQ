@@ -25,6 +25,7 @@ class ResearchSessionModel(Base):
     __tablename__ = "research_sessions"
 
     research_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     user_goal: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="running")
     user_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
@@ -42,7 +43,7 @@ class ResearchSessionModel(Base):
     agent_events: Mapped[list] = mapped_column(JSON, default=list)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc)
+        DateTime, default=lambda: datetime.now(timezone.utc), index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

@@ -42,15 +42,24 @@ def build_workflow():
 agentiq_workflow = build_workflow()
 
 
-def run_agentiq(user_goal: str) -> AgentState:
+def run_agentiq(
+    user_goal: str,
+    session_id: str = "",
+    user_id: str = "",
+) -> AgentState:
     """
-    Run the complete AgentIQ pipeline for a user goal.
-
-    This is the single entry point the FastAPI layer (Module 14) will call.
+    Run the complete AgentIQ pipeline for a user goal within an isolated session and user context.
     """
-    logger.info(f"AgentIQ workflow starting for goal: {user_goal!r}")
+    logger.info(
+        f"AgentIQ workflow starting for goal: {user_goal!r} "
+        f"(user: {user_id or 'anon'}, session: {session_id or 'global'})"
+    )
 
-    initial_state = create_initial_state(user_goal)
+    initial_state = create_initial_state(
+        user_goal=user_goal,
+        session_id=session_id,
+        user_id=user_id,
+    )
     final_state = agentiq_workflow.invoke(initial_state)
 
     logger.info("AgentIQ workflow completed")

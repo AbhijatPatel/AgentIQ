@@ -3,6 +3,7 @@ import "./App.css";
 import Dashboard from "./pages/Dashboard";
 import HistoryPage from "./pages/HistoryPage";
 import Auth from "./components/Auth";
+import Sidebar from "./components/Sidebar";
 import { useResearch } from "./hooks/useResearch";
 import {
   getStoredUser,
@@ -15,6 +16,7 @@ import logoIcon from "./assets/logo-icon.png";
 function App() {
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
   const [user, setUser] = useState(getStoredUser());
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // View state: "research" or "history"
   const [currentView, setCurrentView] = useState(() => {
@@ -35,6 +37,13 @@ function App() {
 
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  // Automatically collapse sidebar on small mobile screens initially
+  useEffect(() => {
+    if (window.innerWidth <= 768) {
+      setSidebarOpen(false);
+    }
   }, []);
 
   // Listen for session expiry from API responses
@@ -58,6 +67,9 @@ function App() {
       const sessionData = await getResearchStatus(researchId);
       researchHook.loadPastSession(sessionData);
       handleNavigate("research");
+      if (window.innerWidth <= 768) {
+        setSidebarOpen(false);
+      }
     } catch (err) {
       console.error("Failed to load session details:", err);
     }
@@ -66,6 +78,9 @@ function App() {
   const handleStartNewResearch = () => {
     researchHook.reset();
     handleNavigate("research");
+    if (window.innerWidth <= 768) {
+      setSidebarOpen(false);
+    }
   };
 
   function handleLogin(loggedInUser) {
@@ -90,23 +105,67 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
-      <div className="app-frame">
+    <div className="app-layout-workspace">
+      {/* ChatGPT-style Left Sidebar */}
+      <Sidebar
+        isOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen((prev) => !prev)}
+        activeResearchId={researchHook.researchId}
+        onSelectSession={handleSelectHistorySession}
+        onStartNewResearch={handleStartNewResearch}
+        user={user}
+        onLogout={handleLogout}
+      />
+
+      {/* Mobile Backdrop */}
+      {sidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Main Workspace Frame */}
+      <div className="main-content-wrapper">
         {/* Top Navigation */}
         <nav className="top-nav" aria-label="Primary navigation">
-          <button
-            type="button"
-            className="brand-lockup-btn"
-            onClick={() => handleNavigate("research")}
-            aria-label="AgentIQ research home"
-          >
-            <div className="brand-logo-frame">
-              <img src={logoIcon} alt="AgentIQ Logo" className="brand-logo-img" />
-            </div>
-            <span className="brand-name">
-              Agent<span className="brand-name-iq">IQ</span>
-            </span>
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <button
+              type="button"
+              className="sidebar-nav-toggle-btn"
+              onClick={() => setSidebarOpen((prev) => !prev)}
+              title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+              aria-label="Toggle sidebar"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              className="brand-lockup-btn"
+              onClick={() => handleNavigate("research")}
+              aria-label="AgentIQ research home"
+            >
+              <div className="brand-logo-frame">
+                <img src={logoIcon} alt="AgentIQ Logo" className="brand-logo-img" />
+              </div>
+              <span className="brand-name">
+                Agent<span className="brand-name-iq">IQ</span>
+              </span>
+            </button>
+          </div>
 
           <div className="nav-segmented-pill" role="tablist" aria-label="Main application sections">
             <button
@@ -132,7 +191,7 @@ function App() {
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
-              <span>Research</span>
+              <span>Workspace</span>
               {researchHook.status === "running" && (
                 <span className="nav-running-indicator" title="Research in progress" />
               )}
@@ -161,7 +220,7 @@ function App() {
                 <path d="M12 8v4l3 3" />
                 <circle cx="12" cy="12" r="9" />
               </svg>
-              <span>History</span>
+              <span>History Library</span>
             </button>
           </div>
 
@@ -208,7 +267,7 @@ function App() {
           </div>
         </nav>
 
-        {/* Main Workspace Area */}
+        {/* Main View Area */}
         <main className="app-container">
           {currentView === "research" ? (
             <Dashboard

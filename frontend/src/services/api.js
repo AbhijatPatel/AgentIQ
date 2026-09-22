@@ -449,6 +449,27 @@ export async function deleteResearchSession(researchId) {
 }
 
 /**
+ * Rename a research session.
+ */
+export async function renameResearchSession(researchId, title) {
+  const response = await apiFetch(`/research/${researchId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ title }),
+  });
+
+  if (!response.ok) {
+    const data = await parseJSON(response);
+    throw new Error(data.detail || data.message || `Failed to rename research session (${response.status})`);
+  }
+
+  return parseJSON(response);
+}
+
+/**
  * Clear all research sessions from history.
  */
 export async function clearAllResearchHistory() {

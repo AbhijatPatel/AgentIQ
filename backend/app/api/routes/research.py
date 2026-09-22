@@ -2,23 +2,24 @@ from __future__ import annotations
 
 import asyncio
 import json
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Depends
+from typing import Optional
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi import Request as FastAPIRequest
 from fastapi.responses import StreamingResponse
 
-from typing import Optional
-
 from app.api.dependencies import (
+    clear_all_sessions,
     create_session,
     delete_session,
-    get_session,
-    update_session,
     get_current_user,
+    get_session,
+    list_sessions,
+    rename_session,
+    update_session,
 )
-from app.database.repository import list_sessions
-from app.graph.workflow import agentiq_workflow, run_agentiq
-from app.graph.state import create_initial_state
-from app.schemas.request import ResearchRequest
+from app.graph.workflow import run_agentiq
+from app.schemas.request import RenameSessionRequest, ResearchRequest
 from app.schemas.response import (
     ResearchEventsResponse,
     ResearchHistoryResponse,
@@ -37,19 +38,23 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-def _run_research_pipeline(research_id: str, user_goal: str) -> None:
+def _run_research_pipeline(research_id: str, user_goal: str, user_id: str) -> None:
     try:
-        final_state = run_agentiq(user_goal)
+        final_state = run_agentiq(user_goal, session_id=research_id, user_id=user_id)
 
         has_final_report = bool(final_state.get("final_report"))
         final_errors = list(final_state.get("errors", []))
 
         if final_errors and not has_final_report:
             final_status = "failed"
-            logger.warning(f"Research session {research_id} finished without report (status=failed). Errors: {final_errors}")
+            logger.warning(
+                f"Research session {research_id} finished without report (status=failed). Errors: {final_errors}"
+            )
         else:
             final_status = "completed"
-            logger.info(f"Research session {research_id} completed (has_report={has_final_report}).")
+            logger.info(
+                f"Research session {research_id} completed (has_report={has_final_report})."
+            )
 
         update_session(
             research_id,
@@ -77,32 +82,12 @@ def _run_research_pipeline(research_id: str, user_goal: str) -> None:
 
 @router.get("/research", response_model=ResearchHistoryResponse)
 def get_research_history(
-    limit: int = Query(default=20, ge=1, le=100, description="Maximum number of research sessions to return."),
-    search: Optional[str] = Query(default=None, description="Search term to filter sessions by user goal."),
+    limit: int = Query(default=50, ge=1, le=100, description="Maximum number of research sessions to return."),
+    search: Optional[str] = Query(default=None, description="Search term to filter sessions by user goal or title."),
+    current_user=Depends(get_current_user),
 ):
-    sessions = list_sessions(limit=limit, search=search)
+    sessions = list_sessions(limit=limit, user_id=str(current_user.id), search=search)
     return ResearchHistoryResponse(sessions=sessions)
-
-
-from app.agents.researcher import research_cache
-from app.database.repository import list_sessions, clear_all_sessions
-
-
-@router.delete("/research")
-@router.post("/research/clear")
-def clear_all_research_history():
-    """Clear all past research sessions and reset in-memory research caches."""
-    count = clear_all_sessions()
-    research_cache.clear()
-    return {"status": "cleared", "deleted_count": count}
-
-
-@router.delete("/research/{research_id}")
-def delete_research_session(research_id: str):
-    success = delete_session(research_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Research session not found")
-    return {"status": "deleted", "research_id": research_id}
 
 
 @router.post("/research", response_model=ResearchStartedResponse, status_code=202)
@@ -111,7 +96,7 @@ def start_research(
     request: FastAPIRequest,
     body: ResearchRequest,
     background_tasks: BackgroundTasks,
-    current_user = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     try:
         safe_goal = validate_prompt_safety(body.goal)
@@ -119,32 +104,72 @@ def start_research(
         logger.warning(f"Blocked potentially unsafe research prompt: {exc}")
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    research_id = create_session(safe_goal)
-    background_tasks.add_task(_run_research_pipeline, research_id, safe_goal)
+    user_id_str = str(current_user.id)
+    research_id = create_session(safe_goal, user_id=user_id_str)
+    background_tasks.add_task(_run_research_pipeline, research_id, safe_goal, user_id_str)
 
     return ResearchStartedResponse(research_id=research_id, status="running")
 
 
 @router.get("/research/{research_id}", response_model=ResearchStatusResponse)
-def get_research_status(research_id: str):
-    session = get_session(research_id)
+def get_research_status(
+    research_id: str,
+    current_user=Depends(get_current_user),
+):
+    session = get_session(research_id, user_id=str(current_user.id))
     if session is None:
         raise HTTPException(status_code=404, detail="Research session not found")
     return ResearchStatusResponse(**session)
 
 
+@router.patch("/research/{research_id}")
+def rename_research_session(
+    research_id: str,
+    body: RenameSessionRequest,
+    current_user=Depends(get_current_user),
+):
+    success = rename_session(research_id, body.title, user_id=str(current_user.id))
+    if not success:
+        raise HTTPException(status_code=404, detail="Research session not found")
+    return {"status": "renamed", "research_id": research_id, "title": body.title.strip()}
+
+
+@router.delete("/research/{research_id}")
+def delete_research_session(
+    research_id: str,
+    current_user=Depends(get_current_user),
+):
+    success = delete_session(research_id, user_id=str(current_user.id))
+    if not success:
+        raise HTTPException(status_code=404, detail="Research session not found")
+    return {"status": "deleted", "research_id": research_id}
+
+
+@router.delete("/research")
+@router.post("/research/clear")
+def clear_all_research_history(
+    current_user=Depends(get_current_user),
+):
+    """Clear all past research sessions belonging to the authenticated user."""
+    count = clear_all_sessions(user_id=str(current_user.id))
+    return {"status": "cleared", "deleted_count": count}
+
+
 @router.get("/research/{research_id}/events", response_model=ResearchEventsResponse)
-def get_research_events(research_id: str):
-    session = get_session(research_id)
+def get_research_events(
+    research_id: str,
+    current_user=Depends(get_current_user),
+):
+    session = get_session(research_id, user_id=str(current_user.id))
     if session is None:
         raise HTTPException(status_code=404, detail="Research session not found")
     return ResearchEventsResponse(research_id=research_id, events=session.get("agent_events", []))
 
 
-async def _event_stream(research_id: str):
+async def _event_stream(research_id: str, user_id: str):
     sent_count = 0
     while True:
-        session = get_session(research_id)
+        session = get_session(research_id, user_id=user_id)
         if session is None:
             yield f"data: {json.dumps({'event': 'error', 'message': 'Session not found'})}\n\n"
             return
@@ -165,13 +190,17 @@ async def _event_stream(research_id: str):
 
 
 @router.get("/research/{research_id}/stream")
-async def stream_research_events(research_id: str):
-    session = get_session(research_id)
+async def stream_research_events(
+    research_id: str,
+    current_user=Depends(get_current_user),
+):
+    user_id_str = str(current_user.id)
+    session = get_session(research_id, user_id=user_id_str)
     if session is None:
         raise HTTPException(status_code=404, detail="Research session not found")
 
     return StreamingResponse(
-        _event_stream(research_id),
+        _event_stream(research_id, user_id_str),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

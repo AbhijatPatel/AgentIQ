@@ -82,10 +82,11 @@ def researcher_node(state: AgentState) -> dict:
     all_videos = []
     errors = list(state.get("errors", []))
     session_id = state.get("session_id") or state.get("research_id") or ""
+    user_id = str(state.get("user_id") or "")
 
     def research_task(task):
         logger.info(f"[Graph] Starting research for task {task.id}: {task.description}")
-        return task, run_researcher(task, session_id=session_id)
+        return task, run_researcher(task, session_id=session_id, user_id=user_id)
 
     all_web_results = []
     max_workers = min(len(tasks), 2)
