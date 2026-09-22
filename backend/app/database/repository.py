@@ -320,9 +320,6 @@ def list_sessions(
     db = db or SessionLocal()
 
     try:
-        # Reconcile stale running sessions
-        reconcile_stale_sessions(max_age_minutes=10, db=db)
-
         query = db.query(
             ResearchSessionModel.research_id,
             ResearchSessionModel.title,

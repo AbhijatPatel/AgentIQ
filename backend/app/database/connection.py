@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 
 engine_kwargs = {
     "pool_pre_ping": True,
+    "pool_reset_on_return": "rollback",
 }
 
 if settings.DATABASE_URL.startswith("postgresql"):
@@ -50,15 +51,18 @@ def get_db():
         db.close()
 
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 
 def init_db() -> None:
     """Create all tables that don't already exist and ensure required columns exist. Safe to call repeatedly."""
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        logger.warning("Base.metadata.create_all warning: %s", e)
 
     # Safe idempotent column additions for existing PostgreSQL databases
-    if settings.DATABASE_URL.startswith("postgresql"):
+    if "postgresql" in settings.DATABASE_URL.lower():
         migrations = [
             "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS title VARCHAR(255);",
             "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);",
@@ -113,3 +117,10 @@ def init_db() -> None:
                 pass
 
     logger.info("Database tables and columns initialized successfully.")
+
+
+# Auto-run table initialization on module import to guarantee tables/columns exist immediately
+try:
+    init_db()
+except Exception as exc:
+    logger.warning("Automatic init_db on import warning: %s", exc)

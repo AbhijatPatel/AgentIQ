@@ -86,8 +86,12 @@ def get_research_history(
     search: Optional[str] = Query(default=None, description="Search term to filter sessions by user goal or title."),
     current_user=Depends(get_current_user),
 ):
-    sessions = list_sessions(limit=limit, user_id=str(current_user.id), search=search)
-    return ResearchHistoryResponse(sessions=sessions)
+    try:
+        sessions = list_sessions(limit=limit, user_id=str(current_user.id), search=search)
+        return ResearchHistoryResponse(sessions=sessions)
+    except Exception as exc:
+        logger.error("Error retrieving research history: %s", exc)
+        return ResearchHistoryResponse(sessions=[])
 
 
 @router.post("/research", response_model=ResearchStartedResponse, status_code=202)
