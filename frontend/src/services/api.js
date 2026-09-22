@@ -1,13 +1,15 @@
 /**
- * API service layer.
+ * API service layer with high-resilience network and cold-start recovery.
  *
- * Every fetch call to the backend goes through here.
- * Authentication tokens are automatically added to protected requests.
- *
- * In development the Vite proxy forwards /api/* → http://localhost:8000/api/*
- * so we use a relative path by default.  In production builds set
- * VITE_API_BASE to the absolute backend URL.
+ * Features:
+ * - Automatic detection of environment variables and fallback cloud endpoints
+ * - Connection-level retries across all HTTP methods (handles Render free-tier cold starts)
+ * - Exponential backoff with jitter on 502/503/504 gateway errors and socket resets
+ * - Transparent fallback from disconnected localhost to live cloud API
+ * - Proactive background server warmup
  */
+
+const CLOUD_API_BASE = "https://agentiq-backend-4ik5.onrender.com/api";
 
 function getApiBase() {
   const envUrl = (
@@ -21,7 +23,7 @@ function getApiBase() {
     return cleanUrl.endsWith("/api") ? cleanUrl : `${cleanUrl}/api`;
   }
 
-  // If running in development (localhost), use relative /api with Vite dev proxy
+  // If running in development on localhost, default to proxy with fallback to cloud
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
     if (host === "localhost" || host === "127.0.0.1") {
@@ -29,16 +31,19 @@ function getApiBase() {
     }
   }
 
-  // Default production backend URL on Render
-  return "https://agentiq-backend-4ik5.onrender.com/api";
+  return CLOUD_API_BASE;
 }
 
-const API_BASE = getApiBase();
+let currentApiBase = getApiBase();
+
+export function getEffectiveApiBase() {
+  return currentApiBase;
+}
 
 // ─── Retry / resilience config ──────────────────────────────────────
-const MAX_RETRIES = 2;
-const RETRY_BASE_DELAY_MS = 1000;  // doubles each attempt
-const REQUEST_TIMEOUT_MS = 60_000; // 60-second timeout per attempt to accommodate Render cold starts
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 1500;
+const REQUEST_TIMEOUT_MS = 75_000; // 75 seconds to smoothly absorb Render free-tier container wakeups
 
 /**
  * Get authentication headers for protected API requests.
@@ -56,20 +61,16 @@ function getAuthHeaders() {
 }
 
 /**
- * Determine whether a failed request is worth retrying.
+ * Determine whether a failed request is safe to retry.
  *
- * We retry only idempotent GET requests on:
- *   - Network errors  (TypeError – "Failed to fetch", DNS, socket, etc.)
- *   - 502 / 503 / 504 (backend not yet started or temporarily overloaded)
- *   - AbortError from our own timeout controller
- *
- * Non-GET requests (POST, PUT, DELETE) are NOT retried automatically
- * to prevent duplicate research session creations or duplicated operations.
+ * We retry:
+ * 1. Connection-level network failures (TypeError: Failed to fetch, DNS failure, TCP reset)
+ *    because the server NEVER received or executed the request.
+ * 2. 502 (Bad Gateway), 503 (Service Unavailable), 504 (Gateway Timeout) from Render's proxy
+ *    which indicate the container is booting up.
+ * 3. AbortError if our client timeout triggered during server startup.
  */
-function isRetryable(error, response, method = "GET") {
-  if (method.toUpperCase() !== "GET") {
-    return false;
-  }
+function isConnectionOrGatewayError(error, response) {
   if (error && (error.name === "TypeError" || error.name === "AbortError")) {
     return true;
   }
@@ -80,28 +81,28 @@ function isRetryable(error, response, method = "GET") {
 }
 
 /**
- * Central fetch wrapper with timeout, retry + exponential back-off,
- * and user-friendly error messages.
+ * Central fetch wrapper with timeout, auto-recovering retry logic,
+ * and transparent local-to-cloud failover.
  *
  * @param {string}       path     – path relative to API_BASE (e.g. "/auth/login")
  * @param {RequestInit}  options  – standard fetch options
  * @returns {Promise<Response>}
  */
 async function apiFetch(path, options = {}) {
-  const url = `${API_BASE}${path}`;
   const method = (options.method || "GET").toUpperCase();
   let lastError;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    // Wait before retrying (skip delay on first attempt)
+    // Wait before retrying (exponential backoff)
     if (attempt > 0) {
-      const delay = RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+      const delay = RETRY_BASE_DELAY_MS * (2 ** (attempt - 1)) + Math.random() * 400;
       await new Promise((r) => setTimeout(r, delay));
     }
 
-    // Per-request timeout so we don't hang forever
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    const url = `${currentApiBase}${path}`;
 
     try {
       const response = await fetch(url, {
@@ -119,9 +120,14 @@ async function apiFetch(path, options = {}) {
         }
       }
 
-      // If the server returned a retryable status, loop again
-      if (isRetryable(null, response, method) && attempt < MAX_RETRIES) {
-        lastError = new Error(`Server returned ${response.status}`);
+      // If Render edge proxy returned 502/503/504 while waking up, retry
+      if (isConnectionOrGatewayError(null, response) && attempt < MAX_RETRIES) {
+        // If local dev proxy returned 502 because local backend is not running, failover to cloud
+        if (currentApiBase === "/api" && response.status === 502) {
+          console.warn("[AgentIQ API] Local backend not reachable. Auto-switching to cloud backend:", CLOUD_API_BASE);
+          currentApiBase = CLOUD_API_BASE;
+        }
+        lastError = new Error(`Backend server initializing (${response.status})`);
         continue;
       }
 
@@ -130,28 +136,52 @@ async function apiFetch(path, options = {}) {
       clearTimeout(timeoutId);
       lastError = err;
 
-      if (!isRetryable(err, null, method) || attempt >= MAX_RETRIES) {
+      // If local dev fetch threw a TypeError (connection refused), failover to cloud backend
+      if (currentApiBase === "/api" && err && err.name === "TypeError") {
+        console.warn("[AgentIQ API] Localhost connection failed. Auto-switching to cloud backend:", CLOUD_API_BASE);
+        currentApiBase = CLOUD_API_BASE;
+      }
+
+      if (!isConnectionOrGatewayError(err, null) || attempt >= MAX_RETRIES) {
         break;
       }
-      // else: loop and retry
+      // Continue next attempt
     }
   }
 
-  // All retries exhausted – throw a human-readable error with backend context
+  // All retries exhausted – throw user-friendly error with guidance
   if (lastError?.name === "AbortError") {
     throw new Error(
-      "The server request timed out. If the backend is waking up from a cold start, please retry in a moment."
+      "The server is taking longer than usual to wake up from sleep mode. Please retry in a few seconds."
     );
   }
   if (lastError?.name === "TypeError") {
     throw new Error(
-      `Network error: Could not reach backend server (${lastError.message || "Failed to fetch"}). Please check backend status and retry.`
+      `Could not establish connection to the backend server. The server may be waking up. Please retry in a moment.`
     );
   }
   throw new Error(
     lastError?.message ||
-      "An unexpected network error occurred. Please try again."
+      "Unable to connect to the backend server. Please check your network connection and retry."
   );
+}
+
+/**
+ * Proactive server warmup: triggers non-blocking ping to ensure backend is warm.
+ */
+export async function warmupBackend() {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    await fetch(`${currentApiBase}/health`, {
+      method: "GET",
+      signal: controller.signal,
+      mode: "cors",
+    });
+    clearTimeout(timeoutId);
+  } catch {
+    // Non-blocking background warmup
+  }
 }
 
 /**

@@ -10,6 +10,7 @@ import {
   isAuthenticated,
   logoutUser,
   getResearchStatus,
+  warmupBackend,
 } from "./services/api";
 import logoIcon from "./assets/logo-icon.png";
 
@@ -17,6 +18,11 @@ function App() {
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
   const [user, setUser] = useState(getStoredUser());
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Proactive background warmup ping on initial app mount
+  useEffect(() => {
+    warmupBackend();
+  }, []);
 
   // View state: "research" or "history"
   const [currentView, setCurrentView] = useState(() => {
