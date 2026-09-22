@@ -51,6 +51,8 @@ export default function Dashboard({ researchHook: passedHook, onNavigateToHistor
     };
   }, [showAttachMenu]);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const internalHook = useResearch();
   const {
     status,
@@ -61,7 +63,7 @@ export default function Dashboard({ researchHook: passedHook, onNavigateToHistor
     reset,
   } = passedHook || internalHook;
 
-  const isRunning = status === "running" || isUploadingFiles;
+  const isRunning = status === "running" || isUploadingFiles || isSubmitting;
   const canSubmit =
     (goalInput.trim().length >= MIN_GOAL_LENGTH || attachments.length > 0) &&
     !isRunning;
@@ -75,42 +77,47 @@ export default function Dashboard({ researchHook: passedHook, onNavigateToHistor
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit || isSubmitting) return;
 
     if (isListening && recognitionRef.current) {
       recognitionRef.current.stop();
       setIsListening(false);
     }
 
-    setActiveResultTab("all");
+    setIsSubmitting(true);
+    try {
+      setActiveResultTab("all");
 
-    let promptText = goalInput.trim();
-    if (!promptText && attachments.length > 0) {
-      promptText = "Analyze and summarize the key findings from the attached materials.";
-    }
-
-    // If attachments exist, index them into RAG
-    if (attachments.length > 0) {
-      setIsUploadingFiles(true);
-      try {
-        const indexedNames = [];
-        for (const item of attachments) {
-          try {
-            const res = await uploadDocument(item.file);
-            indexedNames.push(res.filename || item.name);
-          } catch (uploadErr) {
-            console.warn(`Failed to upload ${item.name}:`, uploadErr);
-          }
-        }
-        if (indexedNames.length > 0) {
-          promptText += ` [Referenced Files: ${indexedNames.join(", ")}]`;
-        }
-      } finally {
-        setIsUploadingFiles(false);
+      let promptText = goalInput.trim();
+      if (!promptText && attachments.length > 0) {
+        promptText = "Analyze and summarize the key findings from the attached materials.";
       }
-    }
 
-    run(promptText);
+      // If attachments exist, index them into RAG
+      if (attachments.length > 0) {
+        setIsUploadingFiles(true);
+        try {
+          const indexedNames = [];
+          for (const item of attachments) {
+            try {
+              const res = await uploadDocument(item.file);
+              indexedNames.push(res.filename || item.name);
+            } catch (uploadErr) {
+              console.warn(`Failed to upload ${item.name}:`, uploadErr);
+            }
+          }
+          if (indexedNames.length > 0) {
+            promptText += ` [Referenced Files: ${indexedNames.join(", ")}]`;
+          }
+        } finally {
+          setIsUploadingFiles(false);
+        }
+      }
+
+      await run(promptText);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleKeyDown = (e) => {

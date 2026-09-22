@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
     LLM_BASE_URL: str = "https://api.groq.com/openai/v1"
-    LLM_MODEL: str = "openai/gpt-oss-120b"
-    LLM_FALLBACK_MODEL: str = "openai/gpt-oss-20b"
+    LLM_MODEL: str = "llama-3.3-70b-versatile"
+    LLM_FALLBACK_MODEL: str = "llama-3.1-8b-instant"
 
     LLM_TIMEOUT_SECONDS: int = 60
     LLM_MAX_RETRIES: int = 2

@@ -81,11 +81,30 @@ class LLMClient:
 
         self._client = OpenAI(**client_kwargs)
         self._base_url = base_url
-        self._model = settings.LLM_MODEL
-        self._fallback_model = settings.LLM_FALLBACK_MODEL
+        
+        # Provider-aware model normalization
+        is_groq = "groq" in base_url.lower() or api_key.startswith("gsk_")
+        is_openai = "api.openai.com" in base_url.lower() and not is_groq
+
+        model = (settings.LLM_MODEL or "").strip()
+        fallback_model = (settings.LLM_FALLBACK_MODEL or "").strip()
+
+        if is_groq:
+            if not model or model.startswith("openai/"):
+                model = "llama-3.3-70b-versatile"
+            if not fallback_model or fallback_model.startswith("openai/"):
+                fallback_model = "llama-3.1-8b-instant"
+        elif is_openai:
+            if not model or "llama" in model.lower() or model.startswith("openai/"):
+                model = "gpt-4o-mini"
+            if not fallback_model or "llama" in fallback_model.lower() or fallback_model.startswith("openai/"):
+                fallback_model = "gpt-3.5-turbo"
+
+        self._model = model or "llama-3.3-70b-versatile"
+        self._fallback_model = fallback_model or "llama-3.1-8b-instant"
         self._temperature = settings.LLM_TEMPERATURE
 
-        provider_name = "Groq" if "groq" in base_url.lower() else ("OpenRouter" if "openrouter" in base_url.lower() else "OpenAI")
+        provider_name = "Groq" if is_groq else ("OpenAI" if is_openai else "Custom/OpenRouter")
         logger.info(
             "LLMClient initialized (provider=%s, primary_model=%s, fallback_model=%s, base_url=%s)",
             provider_name,
@@ -317,27 +336,57 @@ class LLMClient:
 
                 except APIError as exc:
                     last_error = exc
-                    logger.error("LLM API error using model=%s: %s", current_model, type(exc).__name__)
-                    if getattr(exc, "status_code", 0) >= 500 and attempt < settings.LLM_MAX_RETRIES:
+                    status_code = getattr(exc, "status_code", None)
+                    message = getattr(exc, "message", str(exc))
+                    logger.error(
+                        "LLM API error (status=%s, type=%s, model=%s): %s",
+                        status_code,
+                        type(exc).__name__,
+                        current_model,
+                        message,
+                    )
+                    # For 5xx server errors, retry with backoff
+                    if status_code and status_code >= 500 and attempt < settings.LLM_MAX_RETRIES:
                         delay = self._calculate_retry_delay(attempt)
+                        logger.info("Retrying LLM request in %.2f seconds...", delay)
                         time.sleep(delay)
                     else:
+                        # For 4xx errors (e.g. 400 Bad Request, 404 Model Not Found),
+                        # break to try fallback model immediately instead of retrying invalid request
                         if current_model != models_to_try[-1]:
+                            logger.warning(
+                                "Model %s failed with API error (status=%s). Trying fallback model=%s.",
+                                current_model,
+                                status_code,
+                                self._fallback_model,
+                            )
                             break
-                        raise LLMClientError("The AI service returned an error. Please try again.") from exc
+                        safe_msg = f"AI service error ({status_code or type(exc).__name__}): {message}" if status_code else "The AI service returned an error. Please try again."
+                        raise LLMClientError(safe_msg) from exc
 
                 except LLMClientError:
                     raise
 
                 except Exception as exc:
                     last_error = exc
-                    logger.error("Unexpected error calling LLM using model=%s: %s", current_model, type(exc).__name__)
+                    logger.error(
+                        "Unexpected error calling LLM (model=%s, type=%s): %s",
+                        current_model,
+                        type(exc).__name__,
+                        exc,
+                    )
                     if current_model != models_to_try[-1]:
+                        logger.warning(
+                            "Model %s failed with %s. Trying fallback model=%s.",
+                            current_model,
+                            type(exc).__name__,
+                            self._fallback_model,
+                        )
                         break
-                    raise LLMClientError("Unexpected error communicating with AI service.") from exc
+                    raise LLMClientError(f"Unexpected error communicating with AI service: {exc}") from exc
 
         if last_error:
-            raise LLMClientError("All configured LLM models failed.") from last_error
+            raise LLMClientError(f"All configured LLM models failed: {last_error}") from last_error
 
         raise LLMClientError("LLM request failed unexpectedly.")
 

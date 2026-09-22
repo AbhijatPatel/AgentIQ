@@ -58,12 +58,18 @@ function getAuthHeaders() {
 /**
  * Determine whether a failed request is worth retrying.
  *
- * We retry on:
+ * We retry only idempotent GET requests on:
  *   - Network errors  (TypeError – "Failed to fetch", DNS, socket, etc.)
  *   - 502 / 503 / 504 (backend not yet started or temporarily overloaded)
  *   - AbortError from our own timeout controller
+ *
+ * Non-GET requests (POST, PUT, DELETE) are NOT retried automatically
+ * to prevent duplicate research session creations or duplicated operations.
  */
-function isRetryable(error, response) {
+function isRetryable(error, response, method = "GET") {
+  if (method.toUpperCase() !== "GET") {
+    return false;
+  }
   if (error && (error.name === "TypeError" || error.name === "AbortError")) {
     return true;
   }
@@ -83,6 +89,7 @@ function isRetryable(error, response) {
  */
 async function apiFetch(path, options = {}) {
   const url = `${API_BASE}${path}`;
+  const method = (options.method || "GET").toUpperCase();
   let lastError;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -113,7 +120,7 @@ async function apiFetch(path, options = {}) {
       }
 
       // If the server returned a retryable status, loop again
-      if (isRetryable(null, response) && attempt < MAX_RETRIES) {
+      if (isRetryable(null, response, method) && attempt < MAX_RETRIES) {
         lastError = new Error(`Server returned ${response.status}`);
         continue;
       }
@@ -123,7 +130,7 @@ async function apiFetch(path, options = {}) {
       clearTimeout(timeoutId);
       lastError = err;
 
-      if (!isRetryable(err, null) || attempt >= MAX_RETRIES) {
+      if (!isRetryable(err, null, method) || attempt >= MAX_RETRIES) {
         break;
       }
       // else: loop and retry

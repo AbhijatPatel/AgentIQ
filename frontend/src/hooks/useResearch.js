@@ -49,6 +49,9 @@ export function useResearch() {
             const finalStatus = await getResearchStatus(research_id);
             setResult(finalStatus);
             setStatus(finalStatus.status); // "completed" or "failed"
+            if (finalStatus.status === "failed" && finalStatus.errors?.length) {
+              setError(finalStatus.errors.join("\n"));
+            }
           } catch (err) {
             setError(err.message);
             setStatus("failed");
@@ -66,12 +69,22 @@ export function useResearch() {
         setEvents((prev) => [...prev, payload]);
       };
 
-      source.onerror = () => {
+      source.onerror = async () => {
         // EventSource retries automatically on transient errors; only
         // treat it as fatal if the connection is fully closed.
         if (source.readyState === EventSource.CLOSED) {
-          setError("Connection to server lost.");
-          setStatus("failed");
+          try {
+            const finalStatus = await getResearchStatus(research_id);
+            setResult(finalStatus);
+            setStatus(finalStatus.status);
+            if (finalStatus.status === "failed" && finalStatus.errors?.length) {
+              setError(finalStatus.errors.join("\n"));
+            }
+            source.close();
+          } catch {
+            setError("Connection to server lost.");
+            setStatus("failed");
+          }
         }
       };
     } catch (err) {

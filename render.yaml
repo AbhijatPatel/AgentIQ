@@ -30,8 +30,17 @@ services:
       - key: OPENAI_API_KEY
         sync: false
 
+      - key: GROQ_API_KEY
+        sync: false
+
       - key: LLM_BASE_URL
         value: "https://api.groq.com/openai/v1"
+
+      - key: LLM_MODEL
+        value: "llama-3.3-70b-versatile"
+
+      - key: LLM_FALLBACK_MODEL
+        value: "llama-3.1-8b-instant"
 
       - key: TAVILY_API_KEY
         sync: false

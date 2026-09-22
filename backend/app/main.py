@@ -38,6 +38,15 @@ async def lifespan(app: FastAPI):
     logger.info("Startup Check: SMTP configured: %s (host=%s, port=%d)", settings.is_smtp_configured, settings.SMTP_HOST or "none", settings.SMTP_PORT)
     logger.info("Startup Check: Web Search configured: %s", bool(settings.TAVILY_API_KEY.strip()))
 
+    # Reconcile any leftover running sessions from previous server run / crash
+    try:
+        from app.database.repository import reconcile_stale_sessions
+        reconciled = reconcile_stale_sessions(max_age_minutes=5)
+        if reconciled > 0:
+            logger.info("Reconciled %d stale running research session(s) to failed on startup.", reconciled)
+    except Exception as exc:
+        logger.warning("Error during startup session reconciliation: %s", exc)
+
     yield
 
     logger.info(

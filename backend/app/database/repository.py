@@ -99,6 +99,60 @@ def update_session(research_id: str, db: Optional[Session] = None, **updates) ->
             db.close()
 
 
+from datetime import datetime, timedelta, timezone
+
+
+def reconcile_stale_sessions(
+    max_age_minutes: int = 10,
+    db: Optional[Session] = None,
+) -> int:
+    """
+    Find research sessions that have been in 'running' status longer than max_age_minutes,
+    and transition them to 'failed' with an explanatory error.
+    This prevents crashed, interrupted, or orphaned jobs from staying 'running' forever.
+    """
+    owns_session = db is None
+    db = db or SessionLocal()
+    count = 0
+
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)
+        stale_records = (
+            db.query(ResearchSessionModel)
+            .filter(
+                ResearchSessionModel.status == "running",
+            )
+            .all()
+        )
+
+        for record in stale_records:
+            rec_time = record.updated_at or record.created_at
+            if rec_time:
+                if rec_time.tzinfo is None:
+                    rec_time = rec_time.replace(tzinfo=timezone.utc)
+                if rec_time < cutoff:
+                    record.status = "failed"
+                    existing_errors = list(record.errors or [])
+                    if not existing_errors:
+                        existing_errors.append(
+                            "Research job timed out or was interrupted before completion."
+                        )
+                    record.errors = existing_errors
+                    count += 1
+
+        if count > 0:
+            db.commit()
+            logger.info(f"Reconciled {count} stale running research session(s) to failed.")
+
+        return count
+    except Exception as exc:
+        logger.warning(f"Error during stale session reconciliation: {exc}")
+        return 0
+    finally:
+        if owns_session:
+            db.close()
+
+
 def get_session(research_id: str, user_id: Optional[str] = None, db: Optional[Session] = None) -> Optional[dict]:
     """Retrieve a session by ID as a dict, or None if it doesn't exist."""
     owns_session = db is None
@@ -111,6 +165,23 @@ def get_session(research_id: str, user_id: Optional[str] = None, db: Optional[Se
         record = query.first()
         if record is None:
             return None
+
+        # Check if single record is stale
+        if record.status == "running":
+            rec_time = record.updated_at or record.created_at
+            if rec_time:
+                if rec_time.tzinfo is None:
+                    rec_time = rec_time.replace(tzinfo=timezone.utc)
+                if rec_time < datetime.now(timezone.utc) - timedelta(minutes=10):
+                    record.status = "failed"
+                    existing_errors = list(record.errors or [])
+                    if not existing_errors:
+                        existing_errors.append(
+                            "Research job timed out or was interrupted before completion."
+                        )
+                    record.errors = existing_errors
+                    db.commit()
+
         return _model_to_dict(record)
     finally:
         if owns_session:
@@ -151,6 +222,9 @@ def list_sessions(
     db = db or SessionLocal()
 
     try:
+        # Reconcile any stale running sessions first
+        reconcile_stale_sessions(max_age_minutes=10, db=db)
+
         query = db.query(
             ResearchSessionModel.research_id,
             ResearchSessionModel.user_goal,
