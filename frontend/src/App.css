@@ -3580,25 +3580,32 @@
 }
 
 .chatgpt-sidebar {
-  width: 280px;
-  min-width: 280px;
-  max-width: 280px;
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
   height: 100vh;
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
   display: flex;
   flex-direction: column;
-  background: #0b1120;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0f172a;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
   color: #f8fafc;
-  z-index: 50;
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 100;
+  transform: translateX(-100%);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 6px 0 30px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   user-select: none;
 }
 
+.chatgpt-sidebar--open {
+  transform: translateX(0);
+}
+
 .chatgpt-sidebar--closed {
-  margin-left: -280px;
+  transform: translateX(-100%);
 }
 
 .sidebar-header {
@@ -4007,20 +4014,37 @@
 .sidebar-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(2px);
-  z-index: 49;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  z-index: 99;
 }
 
-@media (max-width: 768px) {
-  .chatgpt-sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 50;
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
-  }
+.top-nav-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.top-nav-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #00c8ff 0%, #0070f3 100%);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.85rem;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 112, 243, 0.25);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+}
+
+.top-nav-new-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 200, 255, 0.4);
 }
 
 

@@ -16,7 +16,7 @@ import logoIcon from "./assets/logo-icon.png";
 function App() {
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
   const [user, setUser] = useState(getStoredUser());
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // View state: "research" or "history"
   const [currentView, setCurrentView] = useState(() => {
@@ -37,13 +37,6 @@ function App() {
 
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
-  }, []);
-
-  // Automatically collapse sidebar on small mobile screens initially
-  useEffect(() => {
-    if (window.innerWidth <= 768) {
-      setSidebarOpen(false);
-    }
   }, []);
 
   // Listen for session expiry from API responses
@@ -67,9 +60,7 @@ function App() {
       const sessionData = await getResearchStatus(researchId);
       researchHook.loadPastSession(sessionData);
       handleNavigate("research");
-      if (window.innerWidth <= 768) {
-        setSidebarOpen(false);
-      }
+      setSidebarOpen(false);
     } catch (err) {
       console.error("Failed to load session details:", err);
     }
@@ -78,20 +69,20 @@ function App() {
   const handleStartNewResearch = () => {
     researchHook.reset();
     handleNavigate("research");
-    if (window.innerWidth <= 768) {
-      setSidebarOpen(false);
-    }
+    setSidebarOpen(false);
   };
 
   function handleLogin(loggedInUser) {
     setUser(loggedInUser);
     setAuthenticated(true);
+    setSidebarOpen(false);
   }
 
   function handleLogout() {
     logoutUser();
     setUser(null);
     setAuthenticated(false);
+    setSidebarOpen(false);
   }
 
   if (!authenticated) {
@@ -106,7 +97,7 @@ function App() {
 
   return (
     <div className="app-layout-workspace">
-      {/* ChatGPT-style Left Sidebar */}
+      {/* ChatGPT-style Left Sidebar (only opens when clicked) */}
       <Sidebar
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen((prev) => !prev)}
@@ -117,7 +108,7 @@ function App() {
         onLogout={handleLogout}
       />
 
-      {/* Mobile Backdrop */}
+      {/* Backdrop overlay when sidebar is open */}
       {sidebarOpen && (
         <div
           className="sidebar-backdrop"
@@ -135,13 +126,13 @@ function App() {
               type="button"
               className="sidebar-nav-toggle-btn"
               onClick={() => setSidebarOpen((prev) => !prev)}
-              title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-              aria-label="Toggle sidebar"
+              title={sidebarOpen ? "Close sidebar menu" : "Open sidebar menu"}
+              aria-label="Toggle sidebar menu"
             >
               <svg
                 viewBox="0 0 24 24"
-                width="16"
-                height="16"
+                width="18"
+                height="18"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -224,45 +215,15 @@ function App() {
             </button>
           </div>
 
-          <div className="user-profile-widget">
-            <div className="user-badge">
-              <div className="user-avatar-wrapper">
-                <span className="user-avatar" aria-hidden="true">
-                  {(user?.name || user?.email || "U").charAt(0).toUpperCase()}
-                </span>
-                <span className="user-status-dot" title="Active session" />
-              </div>
-              <div className="user-details">
-                <span className="user-display-name">{user?.name || "Researcher"}</span>
-                <span className="user-role-badge">Pro Workspace</span>
-              </div>
-            </div>
-
-            <div className="user-widget-divider" aria-hidden="true" />
-
+          <div className="top-nav-right-actions">
             <button
               type="button"
-              className="user-logout-btn"
-              onClick={handleLogout}
-              title="Sign out of your account"
-              aria-label="Log out"
+              className="top-nav-new-btn"
+              onClick={handleStartNewResearch}
+              title="Start a new research task"
             >
-              <svg
-                viewBox="0 0 24 24"
-                width="14"
-                height="14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
-              <span>Log out</span>
+              <span style={{ fontSize: "1.1rem", fontWeight: "bold" }}>+</span>
+              <span>New</span>
             </button>
           </div>
         </nav>
