@@ -214,6 +214,48 @@ function App() {
               <span>History Library</span>
             </button>
           </div>
+
+          <div className="user-profile-widget">
+            <div className="user-badge">
+              <div className="user-avatar-wrapper">
+                <span className="user-avatar" aria-hidden="true">
+                  {(user?.name || user?.email || "U").charAt(0).toUpperCase()}
+                </span>
+                <span className="user-status-dot" title="Active session" />
+              </div>
+              <div className="user-details">
+                <span className="user-display-name">{user?.name || "Researcher"}</span>
+                <span className="user-role-badge">Pro Workspace</span>
+              </div>
+            </div>
+
+            <div className="user-widget-divider" aria-hidden="true" />
+
+            <button
+              type="button"
+              className="user-logout-btn"
+              onClick={handleLogout}
+              title="Sign out of your account"
+              aria-label="Log out"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span>Log out</span>
+            </button>
+          </div>
         </nav>
 
         {/* Main View Area */}
