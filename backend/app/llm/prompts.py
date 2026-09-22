@@ -29,7 +29,7 @@ RULES:
   (English, Hindi, Hinglish, Spanish, French, German, Chinese, Japanese, \
   Arabic, Russian, Portuguese, etc.). Always accurately interpret the user's intent.
 - Identify what information is actually needed to satisfy the user's goal.
-- Break the goal into 3 to 6 distinct, non-overlapping tasks.
+- Break the goal into 2 to 4 distinct, high-impact, non-overlapping tasks.
 - Do NOT create duplicate or near-duplicate tasks.
 - Each task must be something a researcher can actually search for or investigate.
 - For search tasks, retain key technical terms, entities, and technology names in English \

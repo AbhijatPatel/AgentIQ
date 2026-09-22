@@ -26,20 +26,17 @@ class Settings(BaseSettings):
 
     LLM_TIMEOUT_SECONDS: int = 60
     LLM_MAX_RETRIES: int = 2
-    LLM_RETRY_BASE_DELAY_SECONDS: float = 2.0
-    LLM_RATE_LIMIT_MAX_DELAY_SECONDS: float = 30.0
-    LLM_CONCURRENCY_LIMIT: int = 1
-    LLM_MIN_REQUEST_DELAY_SECONDS: float = 2.0
+    LLM_RETRY_BASE_DELAY_SECONDS: float = 1.0
+    LLM_RATE_LIMIT_MAX_DELAY_SECONDS: float = 20.0
+    LLM_CONCURRENCY_LIMIT: int = 4
+    LLM_MIN_REQUEST_DELAY_SECONDS: float = 0.0
     LLM_TEMPERATURE: float = 0.2
     LLM_MAX_OUTPUT_TOKENS: int = 1024
     LLM_JSON_MAX_OUTPUT_TOKENS: int = 8192
 
     # Maximum number of evidence items passed to the Writer prompt.
-    # This prevents HTTP 413 (request too large) on the small fallback model
-    # (openai/gpt-oss-20b, 8 000 TPM limit). Evidence is ranked by confidence
-    # (high → medium → low) so the highest-quality items are always kept.
-    # Override with MAX_EVIDENCE_FOR_WRITER=N in your .env file.
-    MAX_EVIDENCE_FOR_WRITER: int = 20
+    # 12 high-quality items provides optimal synthesis depth with maximum speed.
+    MAX_EVIDENCE_FOR_WRITER: int = 12
 
     JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
