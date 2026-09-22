@@ -30,6 +30,14 @@ async def lifespan(app: FastAPI):
         f"in {settings.ENVIRONMENT} mode"
     )
 
+    # Initialize database tables and execute safe schema migrations first
+    try:
+        from app.database.connection import init_db
+        init_db()
+        logger.info("Database initialized successfully.")
+    except Exception as exc:
+        logger.error("Database initialization error: %s", exc)
+
     # Safe startup diagnostics (no secrets printed)
     llm_key = settings.effective_llm_api_key
     llm_provider = "Groq" if "groq" in settings.LLM_BASE_URL.lower() or llm_key.startswith("gsk_") else ("OpenRouter" if "openrouter" in settings.LLM_BASE_URL.lower() else "OpenAI")

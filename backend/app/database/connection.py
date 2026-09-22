@@ -56,24 +56,60 @@ from sqlalchemy import text
 def init_db() -> None:
     """Create all tables that don't already exist and ensure required columns exist. Safe to call repeatedly."""
     Base.metadata.create_all(bind=engine)
-    try:
-        with engine.begin() as conn:
-            # Safe migration for existing deployments: ensure `title` column exists
-            conn.execute(
-                text(
-                    "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS title VARCHAR(255);"
-                )
-            )
-            conn.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS ix_research_sessions_user_id ON research_sessions (user_id);"
-                )
-            )
-            conn.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS ix_research_sessions_created_at ON research_sessions (created_at);"
-                )
-            )
-    except Exception as e:
-        logger.warning("Optional schema migration skipped or failed: %s", e)
-    logger.info("Database tables ensured (created if missing)")
+
+    # Safe idempotent column additions for existing PostgreSQL databases
+    if settings.DATABASE_URL.startswith("postgresql"):
+        migrations = [
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS title VARCHAR(255);",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS user_id VARCHAR(255);",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS tasks JSON DEFAULT '[]';",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS evidence_count INTEGER DEFAULT 0;",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS evidence JSON DEFAULT '[]';",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS images JSON DEFAULT '[]';",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS videos JSON DEFAULT '[]';",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS sources JSON DEFAULT '[]';",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS revision_count INTEGER DEFAULT 0;",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS final_report JSON;",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS critique JSON;",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS errors JSON DEFAULT '[]';",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS agent_events JSON DEFAULT '[]';",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE;",
+            "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE;",
+            "CREATE INDEX IF NOT EXISTS ix_research_sessions_user_id ON research_sessions (user_id);",
+            "CREATE INDEX IF NOT EXISTS ix_research_sessions_created_at ON research_sessions (created_at);",
+            "CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, name VARCHAR(100) NOT NULL, created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW());",
+            "CREATE INDEX IF NOT EXISTS ix_users_email ON users (email);",
+            "CREATE TABLE IF NOT EXISTS otp_challenges (id SERIAL PRIMARY KEY, email VARCHAR(255) NOT NULL, code_hash VARCHAR(128) NOT NULL, expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(), used BOOLEAN DEFAULT FALSE);",
+            "CREATE INDEX IF NOT EXISTS ix_otp_challenges_email ON otp_challenges (email);",
+        ]
+        for sql in migrations:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(sql))
+            except Exception as e:
+                logger.debug("PostgreSQL migration step notice for %s: %s", sql[:50], e)
+    elif "sqlite" in settings.DATABASE_URL.lower():
+        # SQLite migrations for existing sqlite databases
+        sqlite_cols = [
+            ("title", "VARCHAR(255)"),
+            ("user_id", "VARCHAR(255)"),
+            ("tasks", "JSON"),
+            ("evidence_count", "INTEGER DEFAULT 0"),
+            ("evidence", "JSON"),
+            ("images", "JSON"),
+            ("videos", "JSON"),
+            ("sources", "JSON"),
+            ("revision_count", "INTEGER DEFAULT 0"),
+            ("final_report", "JSON"),
+            ("critique", "JSON"),
+            ("errors", "JSON"),
+            ("agent_events", "JSON"),
+        ]
+        for col_name, col_type in sqlite_cols:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE research_sessions ADD COLUMN {col_name} {col_type};"))
+            except Exception:
+                pass
+
+    logger.info("Database tables and columns initialized successfully.")

@@ -71,6 +71,10 @@ def create_session(
         db.commit()
         logger.info(f"Created research session {research_id} for user {user_id}")
         return research_id
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Error creating research session: {exc}")
+        raise
     finally:
         if owns_session:
             db.close()
@@ -107,6 +111,9 @@ def update_session(research_id: str, db: Optional[Session] = None, **updates) ->
             setattr(record, key, value)
 
         db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Error updating research session {research_id}: {exc}")
     finally:
         if owns_session:
             db.close()
@@ -136,6 +143,10 @@ def rename_session(
         db.commit()
         logger.info(f"Renamed research session {research_id} to {clean_title!r}")
         return True
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Error renaming session {research_id}: {exc}")
+        return False
     finally:
         if owns_session:
             db.close()
@@ -184,6 +195,7 @@ def reconcile_stale_sessions(
 
         return count
     except Exception as exc:
+        db.rollback()
         logger.warning(f"Error during stale session reconciliation: {exc}")
         return 0
     finally:
@@ -229,6 +241,10 @@ def get_session(
                     db.commit()
 
         return _model_to_dict(record)
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Error retrieving session {research_id}: {exc}")
+        return None
     finally:
         if owns_session:
             db.close()
@@ -256,6 +272,10 @@ def delete_session(
         db.commit()
         logger.info(f"Deleted research session {research_id} for user {user_id}")
         return True
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Error deleting session {research_id}: {exc}")
+        return False
     finally:
         if owns_session:
             db.close()
@@ -278,6 +298,10 @@ def clear_all_sessions(
         db.commit()
         logger.info(f"Cleared {count} research session(s) for user {user_id}.")
         return count
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Error clearing sessions for user {user_id}: {exc}")
+        return 0
     finally:
         if owns_session:
             db.close()
@@ -355,7 +379,10 @@ def list_sessions(
             }
             for record in records
         ]
-
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Error listing sessions for user {user_id}: {exc}")
+        return []
     finally:
         if owns_session:
             db.close()
