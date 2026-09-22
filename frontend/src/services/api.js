@@ -214,8 +214,20 @@ export async function registerUser(name, email, password, code = null) {
   const data = await parseJSON(response);
 
   if (!response.ok) {
+    if (response.status === 409) {
+      throw new Error(data.message || data.detail || "An account with this email already exists. Please sign in.");
+    }
+    if (response.status === 422) {
+      throw new Error(data.message || data.detail || "Invalid registration details. Please verify your inputs.");
+    }
+    if (response.status === 429) {
+      throw new Error("Too many registration requests. Please wait a moment and try again.");
+    }
+    if (response.status >= 500) {
+      throw new Error(data.message || data.detail || "Registration service temporarily unavailable. Please try again later.");
+    }
     throw new Error(
-      data.detail || `Registration failed (${response.status})`
+      data.message || data.detail || `Registration failed (${response.status})`
     );
   }
 
@@ -243,8 +255,20 @@ export async function loginUser(email, password) {
   const data = await parseJSON(response);
 
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error(data.message || data.detail || "Invalid email or password.");
+    }
+    if (response.status === 404) {
+      throw new Error(data.message || data.detail || "No account found with this email. Please register first.");
+    }
+    if (response.status === 429) {
+      throw new Error("Too many login attempts. Please wait a moment and try again.");
+    }
+    if (response.status >= 500) {
+      throw new Error(data.message || data.detail || "Authentication service temporarily unavailable. Please try again later.");
+    }
     throw new Error(
-      data.detail || `Login failed (${response.status})`
+      data.message || data.detail || `Login failed (${response.status})`
     );
   }
 

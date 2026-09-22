@@ -134,9 +134,9 @@ function Auth({ onLogin }) {
                   </button>
                 </div>
               )}
-              {(error.includes("connect") || error.includes("server")) && (
+              {((error.includes("connect") || error.includes("server")) && typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) && (
                 <small style={{ display: "block", marginTop: "4px", opacity: 0.85 }}>
-                  Tip: Run <code>start-dev.ps1</code> to start the backend server.
+                  Tip: Run <code>start-dev.ps1</code> to start the local backend server.
                 </small>
               )}
             </div>
