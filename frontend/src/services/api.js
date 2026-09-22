@@ -452,18 +452,34 @@ export async function deleteResearchSession(researchId) {
  * Clear all research sessions from history.
  */
 export async function clearAllResearchHistory() {
-  const response = await apiFetch("/research", {
-    method: "DELETE",
+  try {
+    const response = await apiFetch("/research", {
+      method: "DELETE",
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+
+    if (response.ok) {
+      return parseJSON(response);
+    }
+  } catch (err) {
+    console.warn("DELETE /research failed, trying POST /research/clear fallback:", err);
+  }
+
+  // Fallback endpoint in case of intermediate proxy restrictions on DELETE
+  const fallbackResponse = await apiFetch("/research/clear", {
+    method: "POST",
     headers: {
       ...getAuthHeaders(),
     },
   });
 
-  if (!response.ok) {
-    throw new Error(`Failed to clear research history (${response.status})`);
+  if (!fallbackResponse.ok) {
+    throw new Error(`Failed to clear research history (${fallbackResponse.status})`);
   }
 
-  return parseJSON(response);
+  return parseJSON(fallbackResponse);
 }
 
 /**

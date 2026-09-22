@@ -84,11 +84,12 @@ def get_research_history(
     return ResearchHistoryResponse(sessions=sessions)
 
 
-from app.database.repository import list_sessions, clear_all_sessions
 from app.agents.researcher import research_cache
+from app.database.repository import list_sessions, clear_all_sessions
 
 
 @router.delete("/research")
+@router.post("/research/clear")
 def clear_all_research_history():
     """Clear all past research sessions and reset in-memory research caches."""
     count = clear_all_sessions()
