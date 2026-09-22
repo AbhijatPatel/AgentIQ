@@ -214,18 +214,6 @@ function App() {
               <span>History Library</span>
             </button>
           </div>
-
-          <div className="top-nav-right-actions">
-            <button
-              type="button"
-              className="top-nav-new-btn"
-              onClick={handleStartNewResearch}
-              title="Start a new research task"
-            >
-              <span style={{ fontSize: "1.1rem", fontWeight: "bold" }}>+</span>
-              <span>New</span>
-            </button>
-          </div>
         </nav>
 
         {/* Main View Area */}
