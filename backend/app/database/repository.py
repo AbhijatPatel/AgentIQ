@@ -209,6 +209,24 @@ def delete_session(research_id: str, user_id: Optional[str] = None, db: Optional
             db.close()
 
 
+def clear_all_sessions(user_id: Optional[str] = None, db: Optional[Session] = None) -> int:
+    """Delete all research sessions, optionally scoped to a user_id. Returns number deleted."""
+    owns_session = db is None
+    db = db or SessionLocal()
+
+    try:
+        query = db.query(ResearchSessionModel)
+        if user_id:
+            query = query.filter((ResearchSessionModel.user_id == user_id) | (ResearchSessionModel.user_id.is_(None)))
+        count = query.delete(synchronize_session=False)
+        db.commit()
+        logger.info(f"Cleared {count} research session(s) from database.")
+        return count
+    finally:
+        if owns_session:
+            db.close()
+
+
 def list_sessions(
     limit: int = 20,
     user_id: Optional[str] = None,

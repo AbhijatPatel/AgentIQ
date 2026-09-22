@@ -449,6 +449,24 @@ export async function deleteResearchSession(researchId) {
 }
 
 /**
+ * Clear all research sessions from history.
+ */
+export async function clearAllResearchHistory() {
+  const response = await apiFetch("/research", {
+    method: "DELETE",
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to clear research history (${response.status})`);
+  }
+
+  return parseJSON(response);
+}
+
+/**
  * Upload a document or image to the RAG knowledge store.
  * @param {File} file
  * @returns {Promise<{ filename: string, chunks_added: number, status: string }>}

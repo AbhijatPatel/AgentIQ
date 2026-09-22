@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { getResearchHistory } from "../services/api";
+import { getResearchHistory, clearAllResearchHistory, deleteResearchSession } from "../services/api";
 
 function formatTimestamp(isoString) {
   if (!isoString) return "Recently";
@@ -23,6 +23,7 @@ export default function HistoryPage({ onSelectSession, onStartNewResearch }) {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [isClearing, setIsClearing] = useState(false);
 
   const loadHistory = async () => {
     setLoading(true);
@@ -35,6 +36,34 @@ export default function HistoryPage({ onSelectSession, onStartNewResearch }) {
       setSessions([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!window.confirm("Are you sure you want to delete all past research history? This action cannot be undone.")) {
+      return;
+    }
+
+    setIsClearing(true);
+    try {
+      await clearAllResearchHistory();
+      setSessions([]);
+    } catch (err) {
+      alert(`Failed to clear history: ${err.message}`);
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
+  const handleDeleteOne = async (e, researchId) => {
+    e.stopPropagation();
+    if (!window.confirm("Delete this research session?")) return;
+
+    try {
+      await deleteResearchSession(researchId);
+      setSessions((prev) => prev.filter((s) => s.research_id !== researchId));
+    } catch (err) {
+      alert(`Failed to delete session: ${err.message}`);
     }
   };
 
@@ -79,6 +108,19 @@ export default function HistoryPage({ onSelectSession, onStartNewResearch }) {
           </div>
 
           <div className="history-header-actions">
+            {sessions.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAll}
+                disabled={isClearing}
+                className="secondary-btn"
+                style={{ color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.3)" }}
+                title="Delete all past research history"
+              >
+                {isClearing ? "Clearing..." : "🗑️ Clear All History"}
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onStartNewResearch}
@@ -330,20 +372,43 @@ export default function HistoryPage({ onSelectSession, onStartNewResearch }) {
                     #{session.research_id.slice(0, 8)}
                   </span>
 
-                  <button
-                    type="button"
-                    className="session-open-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelectSession(session.research_id);
-                    }}
-                  >
-                    {isCompleted
-                      ? "View Full Report →"
-                      : isRunning
-                      ? "View Progress →"
-                      : "Inspect Session →"}
-                  </button>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <button
+                      type="button"
+                      className="session-delete-btn"
+                      onClick={(e) => handleDeleteOne(e, session.research_id)}
+                      title="Delete this session"
+                      aria-label="Delete this session"
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "var(--color-text-muted, #94a3b8)",
+                        padding: "4px 8px",
+                        borderRadius: "4px",
+                        fontSize: "0.85rem",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = "var(--color-text-muted, #94a3b8)")}
+                    >
+                      🗑️
+                    </button>
+
+                    <button
+                      type="button"
+                      className="session-open-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectSession(session.research_id);
+                      }}
+                    >
+                      {isCompleted
+                        ? "View Full Report →"
+                        : isRunning
+                        ? "View Progress →"
+                        : "Inspect Session →"}
+                    </button>
+                  </div>
                 </div>
               </div>
             );
