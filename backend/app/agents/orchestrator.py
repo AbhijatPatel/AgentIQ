@@ -90,8 +90,10 @@ def _revise_draft(
     else:
         references = _parse_references(raw_response.get("references", []))
 
+    from app.utils.section_normalizer import clean_section_title
+
     return DraftReport(
-        title=raw_response["title"],
+        title=clean_section_title(raw_response["title"]),
         executive_summary=raw_response["executive_summary"],
         introduction=raw_response["introduction"],
         findings=raw_response["findings"],

@@ -1,83 +1,39 @@
 """
-Tests for the image search tool (built on Tavily's include_images option).
+Tests for Pollinations.ai image generator.
 """
 
-from unittest.mock import MagicMock, patch
-
-import pytest
-
-from app.tools.web_search import image_search, WebSearchError
-
-
-@patch("app.tools.web_search._get_client")
-def test_image_search_returns_formatted_results(mock_get_client):
-    mock_client = MagicMock()
-    mock_client.search.return_value = {
-        "images": [
-            {"url": "https://example.com/diagram.png", "description": "Architecture diagram"},
-            {"url": "https://example.com/chart.png", "description": "Growth chart"},
-        ]
-    }
-    mock_get_client.return_value = mock_client
-
-    results = image_search("AI agent architecture")
-
-    assert len(results) == 2
-    assert results[0]["url"] == "https://example.com/diagram.png"
-    assert results[0]["description"] == "Architecture diagram"
+from app.tools.pollinations_image import (
+    generate_pollinations_image,
+    generate_research_images,
+)
 
 
-@patch("app.tools.web_search._get_client")
-def test_image_search_returns_empty_list_when_no_images(mock_get_client):
-    mock_client = MagicMock()
-    mock_client.search.return_value = {"images": []}
-    mock_get_client.return_value = mock_client
+def test_generate_pollinations_image_returns_valid_structure():
+    result = generate_pollinations_image("Autonomous Multi-Agent Framework", seed=42)
 
-    results = image_search("an extremely obscure query")
-
-    assert results == []
-
-
-def test_image_search_returns_empty_list_for_empty_query():
-    assert image_search("") == []
-    assert image_search("   ") == []
+    assert "url" in result
+    assert "image.pollinations.ai" in result["url"]
+    assert "model=flux" in result["url"]
+    assert "seed=42" in result["url"]
+    assert result["source"] == "pollinations"
+    assert result["prompt"] == "Autonomous Multi-Agent Framework"
 
 
-@patch("app.tools.web_search._get_client")
-def test_image_search_skips_images_without_url(mock_get_client):
-    mock_client = MagicMock()
-    mock_client.search.return_value = {
-        "images": [
-            {"url": None, "description": "Broken entry"},
-            {"url": "https://example.com/valid.png", "description": "Valid image"},
-        ]
-    }
-    mock_get_client.return_value = mock_client
-
-    results = image_search("some query")
-
-    assert len(results) == 1
-    assert results[0]["url"] == "https://example.com/valid.png"
+def test_generate_pollinations_image_handles_empty_prompt():
+    result = generate_pollinations_image("")
+    assert "url" in result
+    assert "image.pollinations.ai" in result["url"]
+    assert result["source"] == "pollinations"
 
 
-@patch("app.tools.web_search._get_client")
-def test_image_search_raises_on_unexpected_error(mock_get_client):
-    mock_client = MagicMock()
-    mock_client.search.side_effect = RuntimeError("connection reset")
-    mock_get_client.return_value = mock_client
+def test_generate_research_images_returns_curated_list():
+    images = generate_research_images(
+        goal="Quantum Machine Learning Algorithms",
+        tasks_or_claims=["Qubit error correction", "Variational quantum eigensolver"],
+        max_images=3,
+    )
 
-    with pytest.raises(WebSearchError):
-        image_search("some query")
-
-
-@patch("app.tools.web_search._get_client")
-def test_image_search_handles_missing_description(mock_get_client):
-    mock_client = MagicMock()
-    mock_client.search.return_value = {
-        "images": [{"url": "https://example.com/img.png"}]
-    }
-    mock_get_client.return_value = mock_client
-
-    results = image_search("some query")
-
-    assert results[0]["description"] == ""
+    assert len(images) == 3
+    for img in images:
+        assert "url" in img
+        assert img["source"] == "pollinations"

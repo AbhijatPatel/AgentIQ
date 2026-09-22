@@ -1,125 +1,127 @@
-
 """
-YouTube video search (no API key required).
+YouTube video search using official YouTube Data API v3 direct HTTP requests.
 
-Uses the ``youtube-search-python`` library which scrapes YouTube's
-public search interface.  This keeps the project free from any
-YouTube API quota concerns.
-
-Temporary network failures are automatically retried with
-exponential back-off (via the shared ``retry_with_backoff`` helper).
+Features:
+- Official YouTube Data API v3 (no scraper dependency, eliminating proxies/httpx errors)
+- Strict non-blocking execution: YouTube errors, quotas, or missing keys never fail the research pipeline
+- API key masking: Never logs or exposes the YouTube API key
+- Clean schema output matching frontend VideoGallery component
 """
 
 from __future__ import annotations
 
-try:
-    from youtubesearchpython import VideosSearch
-except ImportError:
-    VideosSearch = None
+import requests
 
+from app.config.settings import settings
 from app.utils.logger import get_logger
-from app.utils.retry import retry_with_backoff
 
 logger = get_logger(__name__)
 
+YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
+
 
 class YouTubeSearchError(Exception):
-    """Raised when a YouTube search fails to return usable results."""
+    """Raised when a YouTube search fails unexpectedly."""
 
 
-@retry_with_backoff(
-    max_retries=2,
-    initial_delay=1.0,
-)
 def youtube_search(
     query: str,
-    max_results: int = 4,
+    max_results: int = 3,
 ) -> list[dict]:
     """
-    Search YouTube for videos matching *query*.
-
-    No API key is required — the library scrapes YouTube's public
-    search page.
+    Search YouTube for relevant educational/technical videos using YouTube Data API v3.
 
     Returns:
-        A list of dictionaries, each containing:
-            - title         (str)  : video title
-            - url           (str)  : full YouTube watch URL
-            - thumbnail     (str)  : high-res thumbnail URL
-            - channel       (str)  : channel / uploader name
-            - duration      (str)  : human-readable duration (e.g. "12:34")
-            - views         (str)  : view count text (e.g. "1.2M views")
-            - published     (str)  : relative publish time (e.g. "3 days ago")
-            - video_id      (str)  : YouTube video ID (for embedding)
-            - embed_url     (str)  : iframe-ready embed URL
-            - source        (str)  : always "youtube"
-
-    Raises:
-        YouTubeSearchError: on final failure after retries.
+        List of video dicts containing:
+        - title
+        - url
+        - thumbnail
+        - channel
+        - description
+        - published
+        - video_id
+        - embed_url
+        - source ("youtube")
     """
-    if not query or not query.strip():
-        logger.warning(
-            "Empty query passed to youtube_search(); "
-            "returning no results."
-        )
+    clean_query = (query or "").strip()
+    if not clean_query:
         return []
 
-    if VideosSearch is None:
-        logger.warning("youtubesearchpython is not installed; returning no YouTube results.")
+    api_key = settings.YOUTUBE_API_KEY.strip()
+    if not api_key:
+        logger.info("YOUTUBE_API_KEY is not configured; skipping YouTube search.")
         return []
 
-    logger.info(f"YouTube search: {query!r}")
+    logger.info("Executing YouTube Data API v3 search for query: %s", clean_query[:50])
 
     try:
-        search = VideosSearch(query, limit=max_results)
-        response = search.result()
-    except Exception as exc:
-        logger.error(f"YouTube search failed: {exc}")
-        raise YouTubeSearchError(
-            f"YouTube search failed: {exc}"
-        ) from exc
+        params = {
+            "part": "snippet",
+            "q": clean_query,
+            "maxResults": max_results,
+            "type": "video",
+            "key": api_key,
+        }
 
-    raw_videos = response.get("result", [])
-
-    if not raw_videos:
-        logger.info(f"No YouTube results for query: {query!r}")
-        return []
-
-    formatted: list[dict] = []
-
-    for video in raw_videos:
-        video_id = video.get("id", "")
-
-        # Pick the best available thumbnail
-        thumbnails = video.get("thumbnails", [])
-        thumbnail_url = (
-            thumbnails[-1].get("url") if thumbnails else ""
+        response = requests.get(
+            YOUTUBE_SEARCH_URL,
+            params=params,
+            timeout=8.0,
         )
 
-        formatted.append(
-            {
-                "title": video.get("title", "Untitled"),
-                "url": video.get("link", f"https://www.youtube.com/watch?v={video_id}"),
-                "thumbnail": thumbnail_url,
-                "channel": (
-                    video.get("channel", {}).get("name", "Unknown")
-                ),
-                "duration": video.get("duration", ""),
-                "views": (
-                    video.get("viewCount", {}).get("short", "")
-                    if isinstance(video.get("viewCount"), dict)
-                    else str(video.get("viewCount", ""))
-                ),
-                "published": video.get("publishedTime", ""),
-                "video_id": video_id,
+        if response.status_code == 403:
+            logger.warning("YouTube Data API quota reached or key restricted (status 403). Skipping video search.")
+            return []
+
+        if response.status_code != 200:
+            logger.warning("YouTube Data API returned status %d. Skipping video search.", response.status_code)
+            return []
+
+        data = response.json()
+        items = data.get("items", [])
+        if not items:
+            logger.info("No YouTube videos found for query: %s", clean_query[:50])
+            return []
+
+        formatted: list[dict] = []
+        for item in items:
+            id_info = item.get("id", {})
+            video_id = id_info.get("videoId")
+            if not video_id:
+                continue
+
+            snippet = item.get("snippet", {})
+            thumbnails = snippet.get("thumbnails", {})
+            thumb_url = (
+                thumbnails.get("high", {}).get("url")
+                or thumbnails.get("medium", {}).get("url")
+                or thumbnails.get("default", {}).get("url")
+                or ""
+            )
+
+            title = snippet.get("title", "YouTube Video")
+            channel = snippet.get("channelTitle", "YouTube")
+            description = snippet.get("description", "")
+            published = snippet.get("publishedAt", "")
+
+            formatted.append({
+                "title": title,
+                "url": f"https://www.youtube.com/watch?v={video_id}",
                 "embed_url": f"https://www.youtube.com/embed/{video_id}",
+                "thumbnail": thumb_url,
+                "channel": channel,
+                "description": description,
+                "published": published,
+                "video_id": video_id,
                 "source": "youtube",
-            }
-        )
+            })
 
-    logger.info(
-        f"YouTube search returned "
-        f"{len(formatted)} videos for: {query!r}"
-    )
+        logger.info("YouTube search returned %d videos for query: %s", len(formatted), clean_query[:50])
+        return formatted
 
-    return formatted
+    except requests.exceptions.Timeout:
+        logger.warning("YouTube search timed out for query: %s", clean_query[:50])
+        return []
+    except Exception as exc:
+        logger.warning("YouTube search non-blocking error: %s", exc)
+        return []

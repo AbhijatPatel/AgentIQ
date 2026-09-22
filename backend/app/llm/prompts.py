@@ -131,6 +131,7 @@ or invent new ones.
 RULES:
 - Primarily use the collected evidence. Do not fabricate citations, sources, \
   URLs, or facts that are not in the evidence provided.
+- SECTION HEADINGS & NUMBERING: Generate clean semantic section titles without numeric prefixes, Roman numerals, or bullet markers (e.g. write "Executive Summary", "Key Findings", "Comparative Analysis" instead of "1. Executive Summary" or "Section 1:"). Sequential numbering is handled exclusively by the report renderer.
 - CITATION NUMBERS: A Source Catalog of numbered references will be provided. \
   When referencing a source, use its citation number in square brackets, \
   e.g. [1], [2], [3]. Only use citation numbers that exist in the catalog. \

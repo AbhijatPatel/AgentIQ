@@ -21,9 +21,10 @@ from app.llm.prompts import RESEARCHER_SYSTEM_PROMPT, researcher_user_prompt
 from app.rag.retriever import retrieve
 from app.tools.web_search import (
     web_search,
-    image_search,
-    video_search,
     WebSearchError,
+)
+from app.tools.pollinations_image import (
+    generate_pollinations_image,
 )
 from app.tools.youtube_search import (
     youtube_search,
@@ -43,8 +44,7 @@ logger = get_logger(__name__)
 
 RAG_TOP_K = 3
 WEB_MAX_RESULTS = 3
-IMAGE_MAX_RESULTS = 4
-VIDEO_MAX_RESULTS = 3
+IMAGE_MAX_RESULTS = 2
 YOUTUBE_MAX_RESULTS = 4
 
 MAX_PARALLEL_RESEARCH_TASKS = 4
@@ -137,13 +137,11 @@ def _run_rag(task: Task) -> tuple[list[dict], float]:
 
 def _clean_query_for_media(text: str) -> str:
     """
-    Extract clean keywords from multilingual/conversational task descriptions
-    so that visual media search engines (Pexels and stock image engines) return optimal results.
+    Extract clean keywords from conversational or task descriptions.
     """
     if not text:
         return ""
 
-    # Common conversational / question stop-words across English, Hinglish, Spanish, etc.
     stop_words = {
         "ka", "ki", "ke", "ko", "se", "me", "mein", "par", "kahan", "kyun", "kaise",
         "kya", "hai", "hain", "tha", "the", "thi", "hoga", "hogi", "hote", "hota",
@@ -162,30 +160,25 @@ def _clean_query_for_media(text: str) -> str:
 
 
 def _run_image_search(task: Task) -> tuple[list[dict], float]:
+    """Generate high quality contextual AI image via Pollinations.ai (FLUX). Non-blocking."""
     start = time.perf_counter()
+    results = []
 
     try:
-        # First try full task description
-        results = image_search(
-            task.description,
-            max_results=IMAGE_MAX_RESULTS,
-        )
-        # If no results and query has conversational/multilingual terms, retry with cleaned keywords
-        if not results:
-            cleaned = _clean_query_for_media(task.description)
-            if cleaned != task.description:
-                logger.info(f"Retrying image search with cleaned keywords: {cleaned!r}")
-                results = image_search(cleaned, max_results=IMAGE_MAX_RESULTS)
-    except WebSearchError as exc:
+        clean_desc = _clean_query_for_media(task.description)
+        prompt = f"Infographic data visualization and scientific diagram of {clean_desc or task.description}, 8k resolution, crisp modern technical rendering"
+        img = generate_pollinations_image(prompt)
+        results.append(img)
+    except Exception as exc:
         logger.warning(
-            f"Image search failed for task {task.id}: {exc}"
+            f"Pollinations AI image generation failed for task {task.id}: {exc}"
         )
         results = []
 
     elapsed = time.perf_counter() - start
 
     logger.info(
-        f"Image search completed for task {task.id} "
+        f"Image generation completed for task {task.id} "
         f"in {elapsed:.2f}s with {len(results)} results"
     )
 
@@ -193,43 +186,35 @@ def _run_image_search(task: Task) -> tuple[list[dict], float]:
 
 
 def _run_video_search(task: Task) -> tuple[list[dict], float]:
-    """Fetch videos from both YouTube and Pexels, merging the results."""
+    """Fetch relevant educational & research videos via official YouTube Data API v3. Non-blocking."""
     start = time.perf_counter()
+    results: list[dict] = []
 
-    # --- YouTube (supports all languages natively, no API key needed) ---
-    youtube_results: list[dict] = []
     try:
-        youtube_results = youtube_search(
+        results = youtube_search(
             task.description,
             max_results=YOUTUBE_MAX_RESULTS,
         )
+        if not results:
+            cleaned = _clean_query_for_media(task.description)
+            if cleaned != task.description:
+                results = youtube_search(cleaned, max_results=YOUTUBE_MAX_RESULTS)
     except YouTubeSearchError as exc:
         logger.warning(
             f"YouTube search failed for task {task.id}: {exc}"
         )
-
-    # --- Pexels (supplemental stock footage; cleaned keywords work best) ---
-    pexels_results: list[dict] = []
-    try:
-        pexels_query = _clean_query_for_media(task.description)
-        pexels_results = video_search(
-            pexels_query,
-            max_results=VIDEO_MAX_RESULTS,
-        )
-    except WebSearchError as exc:
+        results = []
+    except Exception as exc:
         logger.warning(
-            f"Pexels video search failed for task {task.id}: {exc}"
+            f"Unexpected YouTube search failure for task {task.id}: {exc}"
         )
-
-    # Merge: YouTube first, then Pexels
-    results = youtube_results + pexels_results
+        results = []
 
     elapsed = time.perf_counter() - start
 
     logger.info(
         f"Video search completed for task {task.id} "
-        f"in {elapsed:.2f}s with {len(results)} results "
-        f"(YouTube: {len(youtube_results)}, Pexels: {len(pexels_results)})"
+        f"in {elapsed:.2f}s with {len(results)} results"
     )
 
     return results, elapsed
@@ -261,15 +246,16 @@ def _run_web_search(task: Task) -> tuple[list[dict], float]:
 
 def run_researcher(
     task: Task,
+    session_id: str = "",
 ) -> tuple[list[Evidence], list[dict], list[dict], list[dict]]:
     total_start = time.perf_counter()
 
     logger.info(
         f"Researcher started for task {task.id}: "
-        f"{task.description!r}"
+        f"{task.description!r} (session: {session_id or 'global'})"
     )
 
-    cached_result = research_cache.get(task.description)
+    cached_result = research_cache.get(task.description, session_id=session_id)
 
     if cached_result is not None:
         total_time = time.perf_counter() - total_start
@@ -535,10 +521,11 @@ def run_researcher(
     research_cache.set(
         task.description,
         result,
+        session_id=session_id,
     )
 
     logger.info(
-        f"Researcher result cached for task {task.id}"
+        f"Researcher result cached for task {task.id} (session: {session_id or 'global'})"
     )
 
     return result

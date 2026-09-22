@@ -91,7 +91,8 @@ def health_diagnostics(db: Session = Depends(get_db)) -> dict[str, Any]:
             },
             "search": {
                 "tavily_configured": bool(settings.TAVILY_API_KEY.strip()),
-                "pexels_configured": bool(settings.PEXELS_API_KEY.strip()),
+                "youtube_configured": bool(settings.YOUTUBE_API_KEY.strip()),
+                "pollinations_configured": True,
             },
         },
     }

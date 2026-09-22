@@ -2,11 +2,19 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import SourceList from "./SourceList";
 
-function Section({ title, content }) {
+function cleanTitle(title) {
+  if (!title) return "";
+  return title.replace(/^(?:#+\s*)?(?:(?:\d+(?:\.\d+)*[\.\)\:\-]\s*)+|[IVXLCDM]+[\.\)\:\-]\s+|[\*\-\•]\s+)/i, "").trim();
+}
+
+function Section({ number, title, content }) {
   if (!content) return null;
+  const semanticTitle = cleanTitle(title);
+  const displayTitle = number ? `${number}. ${semanticTitle}` : semanticTitle;
+
   return (
     <section className="report-section">
-      <h3 className="report-section-subtitle">{title}</h3>
+      <h3 className="report-section-subtitle">{displayTitle}</h3>
       <div className="markdown-content">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
       </div>
@@ -15,33 +23,34 @@ function Section({ title, content }) {
 }
 
 function buildPlainTextReport(report) {
+  const cleanMainTitle = cleanTitle(report.title);
   const sections = [
-    `# ${report.title}`,
+    `# ${cleanMainTitle}`,
     "",
-    "## Executive Summary",
+    "## 1. Executive Summary",
     report.executive_summary,
     "",
-    "## Introduction",
+    "## 2. Introduction",
     report.introduction,
     "",
-    "## Findings",
+    "## 3. Key Findings & Evidence",
     report.findings,
     "",
-    "## Analysis",
+    "## 4. In-Depth Analysis",
     report.analysis,
     "",
-    "## Limitations",
+    "## 5. Limitations & Open Questions",
     report.limitations,
     "",
-    "## Conclusion",
+    "## 6. Strategic Conclusion",
     report.conclusion,
     "",
   ];
 
   if (report.references?.length) {
-    sections.push("## References");
-    report.references.forEach((ref) => {
-      sections.push(`- ${ref.title}${ref.url ? ` (${ref.url})` : ""}`);
+    sections.push("## 7. References & Citations");
+    report.references.forEach((ref, idx) => {
+      sections.push(`[${idx + 1}] ${ref.title}${ref.url ? ` - ${ref.url}` : ""}`);
     });
   }
 
@@ -64,7 +73,8 @@ function downloadReport(report) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${report.title.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}.md`;
+  const safeTitle = (cleanTitle(report.title) || "research_report").replace(/[^a-z0-9]+/gi, "_").toLowerCase();
+  a.download = `${safeTitle}.md`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -89,7 +99,7 @@ export default function ReportViewer({ report, critique }) {
       <div className="report-heading">
         <div>
           <div className="section-kicker">Synthesized Research Output</div>
-          <h2 className="report-title">{report.title}</h2>
+          <h2 className="report-title">{cleanTitle(report.title)}</h2>
         </div>
         <div className="report-actions">
           <button onClick={handleCopy} className="toolbar-btn" title="Copy markdown to clipboard">
@@ -118,12 +128,12 @@ export default function ReportViewer({ report, critique }) {
       )}
 
       <div className="report-body-container">
-        <Section title="Executive Summary" content={report.executive_summary} />
-        <Section title="Introduction" content={report.introduction} />
-        <Section title="Key Findings & Evidence" content={report.findings} />
-        <Section title="In-Depth Analysis" content={report.analysis} />
-        <Section title="Limitations & Open Questions" content={report.limitations} />
-        <Section title="Conclusion & Strategic Recommendations" content={report.conclusion} />
+        <Section number={1} title="Executive Summary" content={report.executive_summary} />
+        <Section number={2} title="Introduction" content={report.introduction} />
+        <Section number={3} title="Key Findings & Evidence" content={report.findings} />
+        <Section number={4} title="In-Depth Analysis" content={report.analysis} />
+        <Section number={5} title="Limitations & Open Questions" content={report.limitations} />
+        <Section number={6} title="Strategic Conclusion" content={report.conclusion} />
       </div>
 
       <SourceList references={report.references} />

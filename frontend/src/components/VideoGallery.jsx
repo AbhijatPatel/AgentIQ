@@ -39,7 +39,7 @@ export default function VideoGallery({ videos }) {
         <div>
           <div className="section-kicker">Multimedia & Stream Intelligence</div>
           <h3 className="section-card-title">
-            <span className="section-icon">🎬</span> Related Videos
+            <span className="section-icon">🎬</span> Educational & Research Videos
             <span className="section-counter-badge">{videos.length}</span>
           </h3>
         </div>
@@ -74,15 +74,9 @@ export default function VideoGallery({ videos }) {
               </div>
 
               {/* Source badge */}
-              {isYouTube(video) ? (
-                <span className="video-source-badge video-source-badge--yt" aria-hidden="true">
-                  YouTube
-                </span>
-              ) : (
-                <span className="video-source-badge video-source-badge--pexel" aria-hidden="true">
-                  Pexels
-                </span>
-              )}
+              <span className="video-source-badge video-source-badge--yt" aria-hidden="true">
+                YouTube
+              </span>
 
               {/* Duration overlay */}
               {video.duration && (
@@ -97,7 +91,7 @@ export default function VideoGallery({ videos }) {
                 {video.title}
               </div>
 
-              {/* Channel & views for YouTube or author */}
+              {/* Channel & views for YouTube */}
               <div className="video-card-meta">
                 {video.channel && <span className="video-channel">{video.channel}</span>}
                 {video.views && <span className="video-views">· {video.views}</span>}
@@ -124,9 +118,7 @@ export default function VideoGallery({ videos }) {
             >
               <div className="video-modal-header">
                 <div className="video-modal-header-left">
-                  {isYouTube(selectedVideo) && (
-                    <span className="video-source-badge video-source-badge--yt">YouTube</span>
-                  )}
+                  <span className="video-source-badge video-source-badge--yt">YouTube</span>
                   <h4 className="video-modal-title" title={selectedVideo.title}>
                     {selectedVideo.title}
                   </h4>
@@ -143,31 +135,15 @@ export default function VideoGallery({ videos }) {
               </div>
 
               <div className="video-modal-content">
-                {/* YouTube videos use responsive iframe embed; Pexels use native <video> */}
-                {isYouTube(selectedVideo) ? (
-                  <div className="video-embed-container">
-                    <iframe
-                      src={`${selectedVideo.embed_url}?autoplay=1&rel=0`}
-                      title={selectedVideo.title}
-                      className="video-embed-iframe"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  </div>
-                ) : (
-                  <div className="video-player-container">
-                    <video
-                      controls
-                      autoPlay
-                      playsInline
-                      poster={selectedVideo.thumbnail}
-                      className="video-player"
-                      src={selectedVideo.preview_video_url}
-                    >
-                      Your browser does not support video playback.
-                    </video>
-                  </div>
-                )}
+                <div className="video-embed-container">
+                  <iframe
+                    src={`${selectedVideo.embed_url || `https://www.youtube-nocookie.com/embed/${selectedVideo.id}`}?autoplay=1&rel=0`}
+                    title={selectedVideo.title}
+                    className="video-embed-iframe"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
               </div>
 
               <div className="video-modal-footer">
@@ -193,7 +169,7 @@ export default function VideoGallery({ videos }) {
                   }
                   className="video-original-button"
                 >
-                  {isYouTube(selectedVideo) ? "Watch on YouTube ↗" : "Open Original Source ↗"}
+                  Watch on YouTube ↗
                 </button>
               </div>
             </div>

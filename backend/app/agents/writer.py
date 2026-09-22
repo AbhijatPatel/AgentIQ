@@ -212,8 +212,10 @@ def run_writer(
         references = _parse_references(raw_response.get("references", []))
         logger.info(f"Writer using {len(references)} LLM-generated references (no source catalog)")
 
+    from app.utils.section_normalizer import clean_section_title
+
     draft = DraftReport(
-        title=raw_response["title"],
+        title=clean_section_title(raw_response["title"]),
         executive_summary=raw_response["executive_summary"],
         introduction=raw_response["introduction"],
         findings=raw_response["findings"],

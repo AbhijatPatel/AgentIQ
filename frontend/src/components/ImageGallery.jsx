@@ -50,7 +50,7 @@ export default function ImageGallery({ images }) {
             <div className="image-wrapper">
               <img
                 src={img.url}
-                alt={img.description || "Research image"}
+                alt={img.description || img.prompt || "Research visualization"}
                 loading="lazy"
                 className="image-card-preview"
                 onError={(e) => {
@@ -60,11 +60,14 @@ export default function ImageGallery({ images }) {
               <div className="image-zoom-indicator">
                 <span>🔍 Zoom</span>
               </div>
+              <span className="video-source-badge" style={{ background: "rgba(99, 102, 241, 0.85)", color: "#fff" }} aria-hidden="true">
+                AI Visual
+              </span>
             </div>
 
-            {img.description && (
-              <div className="image-card-description" title={img.description}>
-                {img.description}
+            {(img.description || img.prompt) && (
+              <div className="image-card-description" title={img.description || img.prompt}>
+                {img.description || img.prompt}
               </div>
             )}
           </button>

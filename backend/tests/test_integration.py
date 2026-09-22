@@ -4,7 +4,7 @@ End-to-end integration tests for the full AgentIQ pipeline.
 Unlike test_graph.py (which tests each node in isolation), these tests
 run the FULL compiled workflow (run_agentiq) start to finish, with
 mocks only at the outermost boundaries: the LLM client and external
-tools (web search, image search, video search, RAG retrieval). This
+tools (web search, Pollinations image generation, YouTube search, RAG retrieval). This
 verifies the entire chain - Planner -> Researcher -> Writer -> Critic -
 actually wires together correctly end to end.
 
@@ -65,21 +65,21 @@ def _mock_llm_responses():
     return [planner_response, researcher_response, researcher_response, writer_response, critic_response]
 
 
-@patch("app.agents.researcher.video_search")
-@patch("app.agents.researcher.image_search")
+@patch("app.agents.researcher.youtube_search")
+@patch("app.agents.researcher.generate_pollinations_image")
 @patch("app.agents.researcher.web_search")
 @patch("app.agents.researcher.retrieve")
 @patch("app.llm.client.llm_client.generate_json")
 def test_full_pipeline_end_to_end_produces_final_report(
-    mock_generate_json, mock_retrieve, mock_web_search, mock_image_search, mock_video_search
+    mock_generate_json, mock_retrieve, mock_web_search, mock_image_gen, mock_yt_search
 ):
     mock_generate_json.side_effect = _mock_llm_responses()
     mock_retrieve.return_value = []
     mock_web_search.return_value = [
         {"title": "Web Result", "url": "https://example.com", "content": "Some content", "source": "example.com"}
     ]
-    mock_image_search.return_value = []
-    mock_video_search.return_value = []
+    mock_image_gen.return_value = {}
+    mock_yt_search.return_value = []
 
     result = run_agentiq("Research the impact of AI on healthcare")
 
@@ -117,20 +117,14 @@ def test_full_pipeline_handles_planner_failure_gracefully(mock_generate_json):
     assert result.get("final_report") is None
 
 
-@patch("app.agents.researcher.video_search")
-@patch("app.agents.researcher.image_search")
+@patch("app.agents.researcher.youtube_search")
+@patch("app.agents.researcher.generate_pollinations_image")
 @patch("app.agents.researcher.web_search")
 @patch("app.agents.researcher.retrieve")
 @patch("app.llm.client.llm_client.generate_json")
 def test_full_pipeline_handles_no_research_material_found(
-    mock_generate_json, mock_retrieve, mock_web_search, mock_image_search, mock_video_search
+    mock_generate_json, mock_retrieve, mock_web_search, mock_image_gen, mock_yt_search
 ):
-    """
-    If both RAG and web search return nothing for every task, the
-    Researcher should produce zero evidence (not fabricate any), and
-    the Writer should still be asked to produce a report noting the
-    lack of evidence, without the pipeline crashing.
-    """
     planner_response = {
         "tasks": [{"id": 1, "description": "Research an obscure topic", "priority": "high"}]
     }
@@ -151,8 +145,8 @@ def test_full_pipeline_handles_no_research_material_found(
     mock_generate_json.side_effect = [planner_response, writer_response, critic_response]
     mock_retrieve.return_value = []
     mock_web_search.return_value = []
-    mock_image_search.return_value = []
-    mock_video_search.return_value = []
+    mock_image_gen.return_value = {}
+    mock_yt_search.return_value = []
 
     result = run_agentiq("Research an obscure topic with no available data")
 

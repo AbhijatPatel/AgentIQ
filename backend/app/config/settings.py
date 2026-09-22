@@ -58,14 +58,13 @@ class Settings(BaseSettings):
     SMTP_TIMEOUT_SECONDS: int = 10
     SMTP_MAX_RETRIES: int = 2
 
-    # Web Search
+    # Web & Media
     TAVILY_API_KEY: str = ""
+    YOUTUBE_API_KEY: str = ""
+    POLLINATIONS_IMAGE_URL: str = "https://image.pollinations.ai/prompt"
 
     # Database
     DATABASE_URL: str = ""
-
-    # Video Search
-    PEXELS_API_KEY: str = ""
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
