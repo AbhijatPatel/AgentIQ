@@ -87,7 +87,7 @@ function App() {
 
   if (!authenticated) {
     return (
-      <div className="app-shell">
+      <div className="app-shell app-shell--auth">
         <div className="auth-container">
           <Auth onLogin={handleLogin} />
         </div>
